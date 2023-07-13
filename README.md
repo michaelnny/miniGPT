@@ -1,5 +1,9 @@
-# mini-GPT
-Try to implement a minimum version of GPT-2 model for education purpose only. Our initial goal was trying to build a full pipeline including RLHF module following the InstructGPT paper, however we soon realized that the pre-trained GPT-2 model is inadequate for complex tasks like answering open-domain questions due to it's small model size. Instead, we will try to implement that pipeline in another project using LLaMA.
+# miniGPT
+Try to implement a minimum version of GPT-2 model for research and education purpose. Although we focus on the GPT-2 model, the procedure is suitable to training any autoregressive language models.
+
+
+**Note**:
+Our initial goal was trying to build a full pipeline including RLHF module following the InstructGPT paper, however we soon realized that the pre-trained GPT-2 model is inadequate for complex tasks like answering open-domain questions due to it's small model size. Instead, we will try to implement that pipeline in another project using LLaMA.
 
 
 ## What we got
