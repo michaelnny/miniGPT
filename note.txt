@@ -1,0 +1,13 @@
+If we need to transfer large files over the Internet, we can first compress it to speed up the process.
+
+# compress the datasets using zst, note we have to use tar because zst does not support directory
+
+tar -c -I 'zstd --ultra -T0 -v' -f openwebtext2_train.tar.zst datasets/openwebtext2/train*
+tar -c -I 'zstd --ultra -T0 -v' -f openwebtext2_eval.tar.zst datasets/openwebtext2/eval*
+
+
+# we can then decompress the datasets
+
+tar -x -I 'zstd -T0 -v' -f openwebtext2_train.tar.zst -C /workspace/datasets
+tar -x -I 'zstd -T0 -v' -f openwebtext2_eval.tar.zst -C /workspace/datasets
+

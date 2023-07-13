@@ -1,0 +1,33 @@
+# Mac OS
+*.DS_Store
+
+# Datasets
+raw_data/
+clean_data/
+datasets/
+
+*.tar
+*.zst
+*.jsonl
+
+# Checkpoints
+checkpoints/
+logs/
+
+# logs
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyBuilder
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version

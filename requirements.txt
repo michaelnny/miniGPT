@@ -1,0 +1,14 @@
+# OpenAI GPT tokenizer
+tiktoken==0.4.0
+
+# utilities
+ftfy==6.1.1
+numpy==1.24.3
+
+tensorboard==2.13.0
+tensorboard-data-server==0.7.1
+tqdm==4.65.0
+ipympl==0.9.3
+
+# for load openAI pretrained GPT-2 weights
+transformers==4.30.2
