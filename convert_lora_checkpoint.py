@@ -38,7 +38,7 @@ def merge_lora_checkpoint(
         model_type: The GPT-2 model type, supports 'gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl'.
         lora_ckpt_path: Path to the checkpoint with trained LoRA weights, which are the output of
             `finetune_lora.py`.
-        pretrained_ckpt_path: The pretrained checkpoint used in side the `finetune_lora.py` when start the fine-tunning.
+        pretrained_ckpt_path: The pretrained checkpoint used in side the `finetune_lora.py` when start the fine-tuning.
         save_path: target path to save the merged stat_dict.
     """
 

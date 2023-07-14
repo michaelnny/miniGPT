@@ -408,7 +408,7 @@ def process_deepmind_math_dataset(
     # split into train and evaluation datasets
     random.shuffle(prompt_completion_pairs)
 
-    # Limit amount of sample when fine-tunning
+    # Limit amount of sample when fine-tuning
     if len(prompt_completion_pairs) > max_size:
         logger.info(f'Truncate data to max size of {max_size}')
         prompt_completion_pairs = prompt_completion_pairs[:max_size]
@@ -494,28 +494,4 @@ if __name__ == "__main__":
         num_workers=20,
     )
 
-    # prompt, comp = build_prompt_completion(prompt="What is 3 + 3?", completion="6")
-    # print(prompt)
-    # print(comp)
-    # prompt, comp = build_prompt_completion(prompt="Tell me a joke about a mad dog.", completion="Be careful, the dog is very mad at you for calling him a mad dog.")
-    # print(prompt)
-    # print(comp)
-    # prompt, comp = build_prompt_completion(
-    #     prompt="When and where did the virus out break?",
-    #     completion="2019, originally in China.",
-    #     context="In 2019, a deadly virus outbreak in China which then wide spread into the world.",
-    # )
-    # print(prompt)
-    # print(comp)
 
-    # prompt, comp = build_conversation_prompt_completions(
-    #     prompt_completion_pairs=[
-    #         {"prompt": "I think I like Jenifer.", "completion": "But she's married bro?"},
-    #         {
-    #             "prompt": "I know, that's what bothers me a lot.",
-    #             "completion": "You need to be careful, since her husband is not very easy to deal with.",
-    #         },
-    #     ]
-    # )
-    # print(prompt)
-    # print(comp)

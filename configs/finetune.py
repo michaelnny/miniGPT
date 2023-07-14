@@ -7,7 +7,7 @@ from torch.distributed.fsdp.fully_sharded_data_parallel import StateDictType
 
 @dataclass
 class config:
-    """Fine-tunning configurations, where we use smaller learning rates, and less training steps"""
+    """fine-tuning configurations, where we use smaller learning rates, and less training steps"""
 
     # model definition, the details (number of layers, heads etc.) are defined in models/gpt2_model.py --> gpt2_meta
     model_type: str = "gpt2-medium"  # gpt2, gpt2-medium, gpt2-large, gpt2-xl

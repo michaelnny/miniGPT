@@ -136,7 +136,7 @@ def run_single_train_step(
         if attn_mask is not None:
             attn_mask = attn_mask.to(local_rank, non_blocking=True)
 
-        with ctx:
+        with ctx:  # mixed precision workaround when FSDP does not support LoRA
             output = model(x, attn_mask)
 
         loss = compute_finetune_loss(output, y, loss_mask)
