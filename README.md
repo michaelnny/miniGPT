@@ -78,6 +78,7 @@ torchrun --standalone --nproc_per_node 4 pretrain.py
 # Fine-tunning
 
 ## Full fine-tunning
+
 This examples shows how to lunch the full fine-tunning script on a machine with 4 GPUs.
 ```
 torchrun --standalone --nproc_per_node 4 finetune.py
@@ -86,13 +87,14 @@ torchrun --standalone --nproc_per_node 4 finetune.py
 
 ## LoRA fine-tunning
 
-As of PyTorch 2.0.1, the FSDP module does not support LoRA, so we have commented out the code related to FSDP inside `finetune_lora.py`. This means the code does not support running on multiple GPUs at the moment. We hope with new PyTorch release, the issue will be fixed soon.
+As of PyTorch 2.0.1, the FSDP module does not support LoRA, so we have commented out the code related to FSDP inside `finetune_lora.py`. This means the code does not support running on multiple GPUs at the moment. We hope with new PyTorch release, the issue will be fixed.
 
-This examples shows how to lunch the LoRA fine-tunning script on a machine with 1 GPUs.
+This examples shows how to lunch the LoRA fine-tunning script on a machine with 1 GPUs. 
 ```
 torchrun --standalone --nproc_per_node 1 finetune_lora.py
 ```
 
+**Note**: Once we've done with LoRA fine-tunning, we need to use the `convert_lora_checkpoint.py` script to merge the LoRA checkpoint together with the pre-trained weights, so later we can load it as a regular PyTorch checkpoint.
 
 # Generate
 
