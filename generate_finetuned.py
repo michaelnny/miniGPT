@@ -97,13 +97,12 @@ def main(args):
     # ]
 
     for task in tasks:
-        print("\n" + "#" * 80 + "\n")
+        print("\n" + "-" * 60 + "\n")
 
         if len(task["context"]) > 0:
             print(f'Context: {task["context"]}\n')
 
-        print(f'Prompt: {task["prompt"]}')
-        print("\n" + "=" * 8 + ">\n")
+        print(f'Prompt: {task["prompt"]}\n')
 
         formatted_prompt, _ = build_prompt_completion(prompt=task["prompt"], completion="None", context=task["context"])
         context = tokenizer.encode(formatted_prompt)
@@ -126,7 +125,7 @@ def main(args):
         out_text = tokenizer.decode(out_tokens[start_idx:])
 
         out_text = out_text[: out_text.find(END_TOKEN)]
-        # out_text = out_text[: out_text.find('\n\n###')]
+        out_text = out_text[: out_text.find('###')]
         print(f"{out_text.strip()}")
 
 
@@ -136,7 +135,7 @@ if __name__ == '__main__':
     parser.add_argument('--top_k', type=int, default=200, help='')
     parser.add_argument('--top_p', type=float, default=0.95, help='')
     parser.add_argument('--temperature', type=float, default=0.8, help='')
-    parser.add_argument('--repetition_penalty', type=float, default=1.1, help='')
+    parser.add_argument('--repetition_penalty', type=float, default=1.0, help='')
     parser.add_argument('--max_gen_seq_length', type=int, default=500, help='')
 
     parser.add_argument(
@@ -145,7 +144,7 @@ if __name__ == '__main__':
         default='gpt2-xl',
         help='gpt2, gpt2-medium, gpt2-large, gpt2-xl, model smaller than gpt2-large performs very poor',
     )
-    parser.add_argument('--ckpt_file', type=str, default='./checkpoints/gpt2-xl-finetune-iter-1500-merged.pt', help='')
+    parser.add_argument('--ckpt_file', type=str, default='./checkpoints/gpt2-xl-finetune-iter-4000-merged.pt', help='')
 
     parser.add_argument('--seed', type=int, default=133, help='random seed (default: 1)')
     args = parser.parse_args()

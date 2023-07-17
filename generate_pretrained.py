@@ -65,9 +65,9 @@ def main(args):
     ]
 
     for prompt in prompts:
-        print("\n" + "#" * 80 + "\n")
-        print(f'Prompt: "{prompt}"')
-        print("\n" + "=" * 8 + ">\n")
+        print("\n" + "-" * 60 + "\n")
+
+        print(f'Prompt: {prompt}\n')
 
         context = tokenizer.encode(prompt)
         context = torch.tensor(context, dtype=torch.long, device=device)[None, ...]
@@ -97,7 +97,7 @@ if __name__ == '__main__':
     parser.add_argument('--top_k', type=int, default=200, help='')
     parser.add_argument('--top_p', type=float, default=0.95, help='')
     parser.add_argument('--temperature', type=float, default=0.8, help='')
-    parser.add_argument('--repetition_penalty', type=float, default=1.1, help='')
+    parser.add_argument('--repetition_penalty', type=float, default=1.0, help='')
     parser.add_argument('--max_gen_seq_length', type=int, default=500, help='')
 
     parser.add_argument(

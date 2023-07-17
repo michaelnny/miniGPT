@@ -11,8 +11,8 @@ datasets/
 *.jsonl
 
 # Checkpoints
-checkpoints/
-logs/
+checkpoints/*-openai-pretrained.pt
+checkpoints/*-merged.pt
 
 # logs
 __pycache__/

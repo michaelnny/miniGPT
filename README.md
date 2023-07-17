@@ -123,9 +123,7 @@ tensorboard --logdir=./logs/finetune_lora
 
 # Generate
 
-We have provided some sample tasks in the `generate_pretrained.py` and `generate_finetuned.py` to get you started. Note that the pre-trained model only predicts the next token, so the response is really not great if the input is some general question.
-
-We can clearly see that the fine-tuned model can answer some (but not all) questions in a reasonably manner. Model size plays a pretty important role here, as we observed, for general question answering tasks, we should use at least the 774M parameters version `gpt2-large`, or using the biggest one `gpt2-xl`.
+We have provided some sample tasks in the `generate_pretrained.py` and `generate_finetuned.py` to get you started. Note that the pre-trained model only predicts the next token, so it will often unable to answer to prompt such as general question.
 
 ```
 python generate_pretrained.py
@@ -133,6 +131,154 @@ python generate_pretrained.py
 
 python generate_finetuned.py
 ```
+
+The following are some examples from the fine-tuned model (based on OpenAI pretrained gpt2-xl) using LoRA fine-tuning (which you can recover the full checkpoint by running the `convert_lora_checkpoint.py` script). We can clearly see that the fine-tuned model can answer some (but not all) questions in a reasonably manner. Model size plays a pretty important role here, as we observed, for general question answering tasks, we should use at least the 774M parameters version `gpt2-large`.
+
+```
+------------------------------------------------------------
+Prompt: Tell me a joke about a dog.
+
+A dog eats a dog.
+------------------------------------------------------------
+
+Prompt: What is the meaning of life?
+
+To eat the cookies.
+
+------------------------------------------------------------
+
+Prompt: Explain what is the theory of relativity.
+
+It is a theory of gravity and time, it states that objects are not in a fixed position, but move around the universe at a constant speed.
+
+------------------------------------------------------------
+
+Prompt: Who is Steve Jobs?
+
+Steve Jobs was the co-founder and CEO of Apple.
+
+------------------------------------------------------------
+
+Prompt: Who is John F. Kennedy?
+
+John F. Kennedy was the 35th President of the United States.
+
+------------------------------------------------------------
+
+Prompt: Who is Kevin Hart?
+
+He is a comedian and actor who has appeared in many films and television shows.
+
+------------------------------------------------------------
+
+Prompt: Who is Michael Jackson?
+
+Michael Jackson is a singer. He is the only person in the world to have one of the highest earnings ever.
+
+------------------------------------------------------------
+
+Prompt: How to asking for a pay raise?
+
+You have to ask your manager directly.
+
+------------------------------------------------------------
+
+Prompt: What is a Put option in finance?
+
+A Put option is a bet that you will sell an asset that you own, at a certain price. With a Put option, you risk a fixed amount, and if the price of the asset goes down, you make money. For example, if you own stocks, and the stock price goes down, you make money. If the stock price goes up, you lose money.
+
+------------------------------------------------------------
+
+Prompt: What is a guitar?
+
+It's a pretty cool tool.
+
+------------------------------------------------------------
+
+Prompt: How often should people exercise to stay healthy?
+
+Exercise is important for staying healthy. Exercise in moderation.
+
+------------------------------------------------------------
+
+Prompt: When did the first World war start?
+
+The first World war started in 1914.
+
+------------------------------------------------------------
+
+Prompt: Why are most plants green?
+
+Because they're carbon-rich!
+
+------------------------------------------------------------
+
+Prompt: How to take care a pet turtle?
+
+I would recommend keeping the turtle in a small aquarium with a small amount of regular fish food. I would not recommend keeping it out in the wild, where it could get into problems.
+
+------------------------------------------------------------
+
+Prompt: Is the following statement true or false: cats can fly?
+
+Cats can fly.
+
+------------------------------------------------------------
+
+Prompt: Is fish live on land?
+
+Yes.
+
+------------------------------------------------------------
+
+Prompt: What language is spoken in Brazil?
+
+Portuguese.
+
+------------------------------------------------------------
+
+Prompt: What language is spoken in China?
+
+English.
+
+------------------------------------------------------------
+
+Prompt: What is the best season to visit United States?
+
+summer!
+
+------------------------------------------------------------
+
+Prompt: What is the best season to visit Japan?
+
+It depends on where you want to go, but I would recommend visiting in June or July.
+
+------------------------------------------------------------
+
+Prompt: Explain moon landing in simple words.
+
+The moon landing happened when Richard Nixon, as president of the United States, decided to land a man on the moon.
+
+------------------------------------------------------------
+
+Prompt: If I want to raise a pet, what should I chose, dog or cat?
+
+It's up to you. But they can be very funny to watch.
+
+------------------------------------------------------------
+
+Prompt: What's the capital city of Japan?
+
+Tokyo.
+
+------------------------------------------------------------
+
+Prompt: What's the capital city of United States?
+
+Washington D.C.
+
+```
+
 
 
 # Acknowledgments

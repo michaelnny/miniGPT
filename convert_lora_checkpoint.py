@@ -1,15 +1,10 @@
 """Merge LoRA fine-tunned checkpoint and pretrained checkpoint into a single checkpoint file"""
-import sys
-import time
+
 import os
-from pathlib import Path
-from typing import Optional
-
-
 import torch
 import torch.nn as nn
 
-from models import GPT2LMHeadModel, GPT2ScalarModel, lora
+from models import GPT2LMHeadModel, lora
 
 
 def del_lora_state_dict(model: nn.Module):
@@ -30,7 +25,6 @@ def merge_lora_checkpoint(
     lora_ckpt_path: str,
     pretrained_ckpt_path: str,
     save_path: str,
-    is_scalar_head: bool = False,
 ) -> None:
     """Merges LoRA weights with pretrained base model.
 
@@ -62,10 +56,7 @@ def merge_lora_checkpoint(
     rank = lora_model_lookup(lora_checkpoint)
 
     with lora(r=rank, alpha=16, dropout=0.0, enabled=True):
-        if is_scalar_head:
-            model = GPT2ScalarModel(model_type)
-        else:
-            model = GPT2LMHeadModel(model_type)
+        model = GPT2LMHeadModel(model_type)
         # 1. Load the pretrained weights
         model.load_state_dict(pretrained_checkpoint, strict=False)
         # 2. Load the fine-tuned lora weights
@@ -81,7 +72,7 @@ def merge_lora_checkpoint(
 if __name__ == "__main__":
     merge_lora_checkpoint(
         model_type="gpt2-xl",
-        lora_ckpt_path="./checkpoints/finetune_lora/lora_model_gpt2-xl-iter-1000.pt",
+        lora_ckpt_path="./checkpoints/finetune_lora/lora_model_gpt2-xl-iter-2000.pt",
         pretrained_ckpt_path="./checkpoints/gpt2-xl-openai-pretrained.pt",
-        save_path="./checkpoints/gpt2-xl-finetune-iter-1000-merged.pt",
+        save_path="./checkpoints/gpt2-xl-finetune-iter-2000-merged.pt",
     )

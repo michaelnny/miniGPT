@@ -340,73 +340,50 @@ def _collate_fn(batch):
 
     batch_seq_lengths = [len(item[0]) + len(item[1]) for item in batch]
 
-    max_batch_seq_length = min(cfg.max_seq_length, max(batch_seq_lengths))
+    max_batch_seq_length = max(batch_seq_lengths)
+
+    assert max_batch_seq_length <= cfg.max_seq_length
 
     # concatenate prompt, completion together
     batch_sequences = torch.full((batch_size, max_batch_seq_length), cfg.pad_id, dtype=torch.long)
 
     # where -1s are prompt tokens, 1s are completion tokens, and 0s are padding tokens
-    mask = torch.full((batch_size, max_batch_seq_length), 0, dtype=torch.long)
+    loss_mask = torch.full((batch_size, max_batch_seq_length), 0, dtype=torch.long)
 
     for i, (prompt, completion) in enumerate(batch):
         # need prompt, completion lengths to compute loss mask
         prompt_len, completion_len = len(prompt), len(completion)
 
-        assert completion_len < max_batch_seq_length
-
-        if prompt_len + completion_len > max_batch_seq_length:
-            chunk_size = max_batch_seq_length - completion_len
-            prompt = prompt[-chunk_size:]
-            prompt_len = len(prompt)
+        # enforce check sequence length, since trunk sequence is not the ideal solution since we might lost some very important context
+        seq_len = prompt_len + completion_len
+        assert seq_len <= max_batch_seq_length
 
         seq = torch.concat((prompt, completion), dim=0)
 
-        seq_len = len(seq)
-
-        assert seq_len > 0 and seq_len <= max_batch_seq_length
-
-        if seq_len < max_batch_seq_length:
-            if cfg.pad_left:
-                # example: [1, 2, 3] -> [0, 0, 1, 2, 3]
-                batch_sequences[i, -seq_len:] = seq
-
-                # example: [1, 2, 3] (where 1, 2 are prompt, and 3 is completion) -> [0, 0, -1, -1, 1]
-                mask[i, -(prompt_len + completion_len) : -completion_len] = -1
-                mask[i, -completion_len:] = 1
-            else:
-                # example: [1, 2, 3] -> [1, 2, 3, 0, 0]
-                batch_sequences[i, :seq_len] = seq
-
-                # example: [1, 2, 3] (where 1, 2 are prompt, and 3 is completion) -> [-1, -1, 1, 0, 0]
-                mask[i, :prompt_len] = -1
-                mask[i, prompt_len : prompt_len + completion_len] = 1
-        else:
-            batch_sequences[i, :] = seq
-
-            # example: [1, 2, 3, 4, 5] (where 1, 2, 3 are prompt, and 4, 5 are completion) -> [-1, -1, -1, 1, 1]
-            mask[i, :prompt_len] = -1
-            mask[i, prompt_len:] = 1
+        # right padding, a simplified example where 0s are pad id: [1, 2, 3] -> [1, 2, 3, 0, 0]
+        batch_sequences[i, :seq_len] = seq
+        loss_mask[i, :prompt_len] = -1  # prompt tokens
+        loss_mask[i, prompt_len : prompt_len + completion_len] = 1  # completion tokens
 
     x = batch_sequences[:, :-1]  # [batch_size, max_batch_seq_length - 1]
     y = batch_sequences[:, 1:]  # [batch_size, max_batch_seq_length - 1]
 
     # shift to right to align with y
-    loss_mask = torch.clone(mask)[:, 1:]
+    loss_mask = loss_mask[:, 1:]
 
     # create attention mask
     # BUG in SDPA module when use -inf or bool mask will cause NaNs
     attn_mask = torch.full((batch_size, 1, max_batch_seq_length - 1, max_batch_seq_length - 1), float(-1e10))
 
-    for i, seq_len in enumerate(batch_seq_lengths):
-        # casual mask looks like:
-        # [0, -inf, -inf]
-        # [0, 0, -inf]
-        # [0, 0, 0]
-        casual_mask = torch.triu(attn_mask[i, :, :seq_len, :seq_len], diagonal=1)
-        if cfg.pad_left:
-            attn_mask[i, :, -seq_len:, -seq_len:] = casual_mask
-        else:
-            attn_mask[i, :, :seq_len, :seq_len] = casual_mask
+    attn_mask = torch.triu(attn_mask, diagonal=1)
+
+    # for i, seq_len in enumerate(batch_seq_lengths):
+    #     # example of what a casual mask with special logic to handle pad ids looks like:
+    #     # [0, -inf, -inf, -inf, -inf]
+    #     # [0, 0, -inf, -inf, -inf]
+    #     # [0, 0, 0, -inf, -inf]
+    #     # [-inf, -inf, -inf, -inf, -inf]
+    #     attn_mask[i, :, :seq_len, :seq_len] = torch.triu(attn_mask[i, :, :seq_len, :seq_len], diagonal=1)
 
     return x, y, attn_mask, loss_mask
 
@@ -474,7 +451,7 @@ def fsdp_main():
         attn_dropout=cfg.attn_dropout,
         resid_dropout=cfg.resid_dropout,
     )
-    
+
     logger(f"--> model metadata:\n{model.get_metadata()}")
     logger(f"--> number of parameters: {model.get_num_params() / 1e6:.2f} million")
 

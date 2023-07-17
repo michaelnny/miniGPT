@@ -33,7 +33,6 @@ class config:
 
     max_seq_length: int = 1024  # use smaller sequence length to save GPU RAM
     pad_id: int = 50256  # here we use eot_token id, since GPT-2 model don't have a pad token
-    pad_left: bool = False  # left or right padding
 
     # training and evaluation loops
     max_train_iters: int = 10000  # training samples * epochs / batch size, 500000 training samples, with batch size of 120, 4000 iters = one epoch

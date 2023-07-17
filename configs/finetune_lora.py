@@ -33,7 +33,6 @@ class config:
 
     max_seq_length: int = 1024  # use smaller sequence length to save GPU RAM
     pad_id: int = 50256  # here we use eot_token id, since GPT-2 model don't have a pad token
-    pad_left: bool = False  # left or right padding
 
     # training and evaluation loops
     max_train_iters: int = 10000  # training samples * epochs / batch size, 500000 training samples, with batch size of 120, 4000 iters = one epoch
@@ -49,7 +48,7 @@ class config:
     # LoRA configuration
     lora_r: int = 16
     lora_alpha: int = 32
-    lora_dropout: float = 0.1
+    lora_dropout: float = 0.05
     train_bias: str = 'lora_only'  # none, lora_only, all
 
     # learning rate scheduler
@@ -72,7 +71,7 @@ class config:
     grad_clip: float = 1.0
 
     # dropout regularization
-    embed_dropout: float = 0.2
+    embed_dropout: float = 0.1
     attn_dropout: float = 0.2
     resid_dropout: float = 0.2
 
