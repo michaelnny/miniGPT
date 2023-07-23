@@ -39,10 +39,10 @@ class config:
     micro_batch_size: int = 12
     # accumulate gradients so for each iteration, the actual batch size is = micro_batch_size x gradient_accum_steps
     gradient_accum_steps: int = 10
-    eval_interval: int = 500  # run M evaluation iterations after every N training iterations
-    eval_iters: int = 500  # large size since micro_batch_size is very small
+    eval_interval: int = 1000  # run M evaluation iterations after every N training iterations
+    eval_iters: int = 100  # large size since micro_batch_size is very small
     log_interval: int = 100  # log training metrics (loss, accuracy) every N training iterations
-    ckpt_interval: int = 500  # save model and optionally optimizer checkpoints every N training iterations
+    ckpt_interval: int = 1000  # save model and optionally optimizer checkpoints every N training iterations
     save_optimizer: bool = False  # only valid if ckpt_interval > 0
 
     # learning rate scheduler
@@ -80,15 +80,10 @@ class config:
     checkpoint_type: StateDictType = StateDictType.FULL_STATE_DICT  # alternatively can use SHARDED_STATE_DICT to avoid OOMs
     compile_model: bool = False  # BUG in torch 2.0.1 when working with FSDP, not support python 3.11
 
-    # resume training
-    start_from_iter: int = 0  # default starts from iteration 0
-    load_model_ckpt: str = ''  # load model state from checkpoint file
-    load_optim_ckpt: str = ''  # load optimizer state from checkpoint file
-
     # others
     seed: int = 127
-    log_dir: str = './logs/finetune'  # save logs and traces
-    ckpt_dir: str = './checkpoints/finetune'
+    log_dir: str = './logs_test/finetune'  # save logs and traces
+    ckpt_dir: str = './checkpoints_test/finetune'
     use_tensorboard: bool = True
     use_profiler: bool = False  # use torch profiler to monitoring traces
     track_gpu_mem_usage: bool = False  # track GPU memory allocation statistics

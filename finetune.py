@@ -457,10 +457,9 @@ def fsdp_main():
 
     # Load model checkpoint before passing into FSDP
     if os.path.exists(cfg.pretrain_ckpt_file):
-        if cfg.checkpoint_type == StateDictType.FULL_STATE_DICT:
-            load_full_state_model_checkpoint(model, rank, cfg.pretrain_ckpt_file)
-        elif cfg.checkpoint_type == StateDictType.SHARDED_STATE_DICT:
-            pass
+        logger(f"--> load pretrained checkpoint {cfg.pretrain_ckpt_file}")
+        ckpt_state = torch.load(cfg.pretrain_ckpt_file)
+        model.load_state_dict(ckpt_state)
 
     scaler = None
     mixed_precision_policy = None  # defaults to fp32
@@ -534,18 +533,9 @@ def fsdp_main():
         max_decay_steps=cfg.max_decay_steps,
     )
 
-    # a lazy way to initialize scheduler when resume training, as FSDP does not support save and load scheduler state yet
-    if cfg.start_from_iter > 0:
-        for _ in range(0, cfg.start_from_iter):
-            scheduler.step()
-
-        if rank == 0:
-            current_lr = optimizer.param_groups[0]["lr"]
-            logger(f'Current learning rate is: {current_lr:.6f}')
-
     # --------------- Start Training ---------------
 
-    logger(f"\nStarting to run {cfg.max_train_iters - cfg.start_from_iter} training iterations ...")
+    logger(f"\nStarting to run {cfg.max_train_iters} training iterations ...")
 
     torch_profiler = None
     # Careful as the logs will grow very fast
@@ -573,7 +563,7 @@ def fsdp_main():
         inner_pbar = tqdm.tqdm(range(cfg.max_train_iters), colour="blue", desc="Training iterations")
 
     model.train()
-    for iter in range(cfg.start_from_iter + 1, cfg.max_train_iters + 1):
+    for iter in range(1, cfg.max_train_iters + 1):
         train_stats = run_single_train_step(
             model=model,
             rank=rank,

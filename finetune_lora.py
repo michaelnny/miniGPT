@@ -332,7 +332,7 @@ def fsdp_main():
 
     model = model.to(local_rank)
 
-    scaler = ShardedGradScaler()
+    scaler = torch.cuda.amp.GradScaler()
 
     bf16_ready = torch.version.cuda and torch.cuda.is_bf16_supported() and dist.is_nccl_available()
 
@@ -416,18 +416,9 @@ def fsdp_main():
         max_decay_steps=cfg.max_decay_steps,
     )
 
-    # a lazy way to initialize scheduler when resume training, as FSDP does not support save and load scheduler state yet
-    if cfg.start_from_iter > 0:
-        for _ in range(0, cfg.start_from_iter):
-            scheduler.step()
-
-        if rank == 0:
-            current_lr = optimizer.param_groups[0]["lr"]
-            logger(f'Current learning rate is: {current_lr:.6f}')
-
     # --------------- Start Training ---------------
 
-    logger(f"\nStarting to run {cfg.max_train_iters - cfg.start_from_iter} training iterations ...")
+    logger(f"\nStarting to run {cfg.max_train_iters} training iterations ...")
 
     torch_profiler = None
     # Careful as the logs will grow very fast
@@ -455,7 +446,7 @@ def fsdp_main():
         inner_pbar = tqdm.tqdm(range(cfg.max_train_iters), colour="blue", desc="Training iterations")
 
     model.train()
-    for iter in range(cfg.start_from_iter + 1, cfg.max_train_iters + 1):
+    for iter in range(1, cfg.max_train_iters + 1):
         train_stats = run_single_train_step(
             ctx=mp_ctx,
             model=model,
