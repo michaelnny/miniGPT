@@ -13,10 +13,10 @@ def convert_weights(model_type: str, save_path: str) -> None:
     assert model_type in ('gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl')
 
     if os.path.exists(save_path):
-        print(f"The checkpoint file {save_path} already exists, aborting...")
+        print(f'The checkpoint file {save_path} already exists, aborting...')
         return
 
-    print(f"Loading weights for {model_type} model from transformers...")
+    print(f'Loading weights for {model_type} model from transformers...')
     # create a hugging face transformers model
     hf_model = HF_GPT2LMHeadModel.from_pretrained(model_type)
     hf_state_dict = hf_model.state_dict()
@@ -59,11 +59,11 @@ def convert_weights(model_type: str, save_path: str) -> None:
     del model
     del state_dict
 
-    print(f"Checkpoint saved at {save_path}")
+    print(f'Checkpoint saved at {save_path}')
 
 
-if __name__ == "__main__":
-    convert_weights(model_type="gpt2", save_path="./checkpoints/gpt2-openai-pretrained.pt")
-    convert_weights(model_type="gpt2-medium", save_path="./checkpoints/gpt2-medium-openai-pretrained.pt")
-    convert_weights(model_type="gpt2-large", save_path="./checkpoints/gpt2-large-openai-pretrained.pt")
-    convert_weights(model_type="gpt2-xl", save_path="./checkpoints/gpt2-xl-openai-pretrained.pt")
+if __name__ == '__main__':
+    convert_weights(model_type='gpt2', save_path='./checkpoints/gpt2-openai-pretrained.pt')
+    convert_weights(model_type='gpt2-medium', save_path='./checkpoints/gpt2-medium-openai-pretrained.pt')
+    convert_weights(model_type='gpt2-large', save_path='./checkpoints/gpt2-large-openai-pretrained.pt')
+    convert_weights(model_type='gpt2-xl', save_path='./checkpoints/gpt2-xl-openai-pretrained.pt')

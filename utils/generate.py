@@ -54,7 +54,7 @@ def sample_sequence(
 
     for _ in range(max_gen_seq_length):
         # If the sequence context is growing too long, we must crop it at block_size
-        generated = generated if generated.size(1) <= model.block_size else generated[:, -model.block_size :]
+        generated = generated if generated.size(1) <= model.block_size else generated[:, -model.block_size :]  # noqa: E203
 
         # Forward the model to get the logits for the indices in the sequence
         next_token_logits = model(generated, is_inference=True)

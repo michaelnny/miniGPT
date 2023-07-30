@@ -72,7 +72,7 @@ def build_dataset_from_jsonl_file(
             continue
 
         for data in json_objs:
-            if not 'prompt' in data or not 'completion' in data:
+            if 'prompt' not in data or 'completion' not in data:
                 continue
 
             x = data['prompt']
@@ -111,32 +111,32 @@ def build_dataset_from_jsonl_file(
         # Also save metadata to .pkl since json file can be easily changed
         pickle.dump(meta, open(meta_file_kpl, 'wb'))
 
-        with open(meta_file_json, 'w', encoding="utf-8") as f:
+        with open(meta_file_json, 'w', encoding='utf-8') as f:
             json.dump(meta, f, indent=2, sort_keys=True)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     logger = create_logger()
 
     build_dataset_from_jsonl_file(
-        src_dir="./clean_data/SQuAD",
-        output_dir="./datasets/SQuAD",
+        src_dir='./clean_data/SQuAD',
+        output_dir='./datasets/SQuAD',
         logger=logger,
         overwrite_output=False,
         metadata={'name': 'SQuAD', 'language': 'English', 'home_page': 'https://rajpurkar.github.io/SQuAD-explorer/'},
     )
 
     build_dataset_from_jsonl_file(
-        src_dir="./clean_data/MARCO_QnA",
-        output_dir="./datasets/MARCO_QnA",
+        src_dir='./clean_data/MARCO_QnA',
+        output_dir='./datasets/MARCO_QnA',
         logger=logger,
         overwrite_output=False,
         metadata={'name': 'MARCO QnA', 'language': 'English', 'home_page': 'https://microsoft.github.io/msmarco/'},
     )
 
     build_dataset_from_jsonl_file(
-        src_dir="./clean_data/dolly",
-        output_dir="./datasets/dolly",
+        src_dir='./clean_data/dolly',
+        output_dir='./datasets/dolly',
         logger=logger,
         overwrite_output=False,
         metadata={
@@ -147,8 +147,8 @@ if __name__ == "__main__":
     )
 
     build_dataset_from_jsonl_file(
-        src_dir="./clean_data/commonsense_dialogues",
-        output_dir="./datasets/commonsense_dialogues",
+        src_dir='./clean_data/commonsense_dialogues',
+        output_dir='./datasets/commonsense_dialogues',
         logger=logger,
         overwrite_output=False,
         metadata={
@@ -159,8 +159,8 @@ if __name__ == "__main__":
     )
 
     build_dataset_from_jsonl_file(
-        src_dir="./clean_data/mathematics_dataset_v1.0",
-        output_dir="./datasets/mathematics_dataset_v1.0",
+        src_dir='./clean_data/mathematics_dataset_v1.0',
+        output_dir='./datasets/mathematics_dataset_v1.0',
         logger=logger,
         overwrite_output=False,
         metadata={

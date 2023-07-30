@@ -9,7 +9,7 @@ from models import GPT2LMHeadModel, lora
 
 def del_lora_state_dict(model: nn.Module):
     base_model_dict = model.state_dict()
-    key_to_delete = [k for k in base_model_dict if "lora_" in k]
+    key_to_delete = [k for k in base_model_dict if 'lora_' in k]
     for del_key in key_to_delete:
         del base_model_dict[del_key]
     return base_model_dict
@@ -17,7 +17,7 @@ def del_lora_state_dict(model: nn.Module):
 
 def lora_model_lookup(checkpoint: dict) -> int:
     """Returns the LoRA rank from the adapter checkpoint."""
-    return checkpoint["transformer.layers.0.mh_attn.c_attn.lora_B"].shape[1]
+    return checkpoint['transformer.layers.0.mh_attn.c_attn.lora_B'].shape[1]
 
 
 def merge_lora_checkpoint(
@@ -39,15 +39,15 @@ def merge_lora_checkpoint(
     assert model_type in ('gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl')
 
     if not os.path.exists(lora_ckpt_path):
-        raise ValueError(f"LoRA checkpoint file {lora_ckpt_path} does not exist, aborting...")
+        raise ValueError(f'LoRA checkpoint file {lora_ckpt_path} does not exist, aborting...')
     if not os.path.exists(pretrained_ckpt_path):
-        raise ValueError(f"Pretrained checkpoint file {pretrained_ckpt_path} does not exist, aborting...")
+        raise ValueError(f'Pretrained checkpoint file {pretrained_ckpt_path} does not exist, aborting...')
 
     if os.path.exists(save_path):
-        print(f"The checkpoint file {save_path} already exists, aborting...")
+        print(f'The checkpoint file {save_path} already exists, aborting...')
         return
 
-    print("Loading model checkpoints ...")
+    print('Loading model checkpoints ...')
 
     pretrained_checkpoint = torch.load(pretrained_ckpt_path)
     lora_checkpoint = torch.load(lora_ckpt_path)
@@ -64,15 +64,15 @@ def merge_lora_checkpoint(
 
     model.eval()
     merged_model_dict = del_lora_state_dict(model)
-    print("Saving LoRA to base model weights ...")
+    print('Saving LoRA to base model weights ...')
     torch.save(merged_model_dict, save_path)
-    print(f"Merged model state dict saved at {save_path}")
+    print(f'Merged model state dict saved at {save_path}')
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     merge_lora_checkpoint(
-        model_type="gpt2-xl",
-        lora_ckpt_path="./checkpoints/finetune_lora/lora_model_gpt2-xl-iter-2000.pt",
-        pretrained_ckpt_path="./checkpoints/gpt2-xl-openai-pretrained.pt",
-        save_path="./checkpoints/gpt2-xl-finetune-iter-2000-merged.pt",
+        model_type='gpt2-xl',
+        lora_ckpt_path='./checkpoints/finetune_lora/lora_model_gpt2-xl-iter-2000.pt',
+        pretrained_ckpt_path='./checkpoints/gpt2-xl-openai-pretrained.pt',
+        save_path='./checkpoints/gpt2-xl-finetune-iter-2000-merged.pt',
     )

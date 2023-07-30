@@ -62,7 +62,7 @@ from models.lora import lora, lora_state_dict, mark_only_lora_as_trainable
 
 def setup():
     # initialize the process group
-    dist.init_process_group("nccl")
+    dist.init_process_group('nccl')
 
 
 def cleanup():
@@ -70,7 +70,7 @@ def cleanup():
 
 
 def clear_gpu_cache(rank=None):
-    print(f"clearing cache for rank {rank}")
+    print(f'clearing cache for rank {rank}')
     torch.cuda.empty_cache()
 
 
@@ -85,7 +85,7 @@ def apply_fsdp_checkpointing(model):
     """apply activation checkpointing to model
     returns None as model is updated directly
     """
-    check_fn = lambda submodule: isinstance(submodule, EncoderBlock)
+    check_fn = lambda submodule: isinstance(submodule, EncoderBlock)  # noqa: E731
 
     apply_activation_checkpointing(model, checkpoint_wrapper_fn=non_reentrant_wrapper, check_fn=check_fn)
 
@@ -116,7 +116,7 @@ def run_single_train_step(
 
     """
 
-    local_rank = int(os.environ["LOCAL_RANK"])
+    local_rank = int(os.environ['LOCAL_RANK'])
 
     if return_stats:
         fsdp_metrics = torch.zeros(5).to(local_rank)
@@ -185,12 +185,12 @@ def run_single_train_step(
         train_perplexity = fsdp_metrics[1] / fsdp_metrics[2]
         train_accuracy = 100 * fsdp_metrics[3] / fsdp_metrics[4]
 
-        lr = optimizer.param_groups[0]["lr"]
+        lr = optimizer.param_groups[0]['lr']
         return {
-            "loss": train_loss.item(),
-            "accuracy": train_accuracy.item(),
-            "perplexity": train_perplexity.item(),
-            "learning_rate": lr,
+            'loss': train_loss.item(),
+            'accuracy': train_accuracy.item(),
+            'perplexity': train_perplexity.item(),
+            'learning_rate': lr,
         }
     else:
         return None
@@ -200,13 +200,13 @@ def run_evaluation_steps(ctx, model, rank, world_size, eval_loader):
     """Run M evaluation iterations"""
     model.eval()  # set model in evaluation mode
 
-    local_rank = int(os.environ["LOCAL_RANK"])
+    local_rank = int(os.environ['LOCAL_RANK'])
 
     fsdp_metrics = torch.zeros(5).to(local_rank)
 
     inner_pbar = None
     if rank == 0:
-        inner_pbar = tqdm.tqdm(range(cfg.eval_iters), colour="green", desc="Evaluation iterations")
+        inner_pbar = tqdm.tqdm(range(cfg.eval_iters), colour='green', desc='Evaluation iterations')
 
     with torch.no_grad():
         for x, y, attn_mask, loss_mask in itertools.islice(eval_loader, cfg.eval_iters):
@@ -245,7 +245,7 @@ def run_evaluation_steps(ctx, model, rank, world_size, eval_loader):
 
     model.train()  # set model in training mode after evaluation runs
 
-    return {"loss": eval_loss.item(), "accuracy": eval_accuracy.item(), 'perplexity': eval_perplexity.item()}
+    return {'loss': eval_loss.item(), 'accuracy': eval_accuracy.item(), 'perplexity': eval_perplexity.item()}
 
 
 def rank0_logger(msg, rank):
@@ -261,9 +261,9 @@ def fsdp_main():
     if not os.path.exists(cfg.pretrain_ckpt_file):
         raise ValueError(f'Invalid pretrained checkpoint "{cfg.pretrain_ckpt_file}", aborting...')
 
-    local_rank = int(os.environ["LOCAL_RANK"])
-    rank = int(os.environ["RANK"])
-    world_size = int(os.environ["WORLD_SIZE"])
+    local_rank = int(os.environ['LOCAL_RANK'])
+    rank = int(os.environ['RANK'])
+    world_size = int(os.environ['WORLD_SIZE'])
 
     setup()
 
@@ -271,41 +271,41 @@ def fsdp_main():
 
     # --------------- Load datasets ---------------
 
-    logger("\nLoading datasets ...")
+    logger('\nLoading datasets ...')
 
     train_dataset = FineTuneDataset(data_sources=cfg.train_datasources)
 
     train_sampler = DistributedSampler(train_dataset, rank=rank, num_replicas=world_size, shuffle=True)
 
     cuda_kwargs = {
-        "collate_fn": _collate_fn,
-        "num_workers": cfg.dataloader_workers,
-        "pin_memory": True,
-        "shuffle": False,
+        'collate_fn': _collate_fn,
+        'num_workers': cfg.dataloader_workers,
+        'pin_memory': True,
+        'shuffle': False,
     }
 
-    train_kwargs = {"batch_size": cfg.micro_batch_size, "sampler": train_sampler}
+    train_kwargs = {'batch_size': cfg.micro_batch_size, 'sampler': train_sampler}
 
     train_kwargs.update(cuda_kwargs)
     train_loader = DataLoader(train_dataset, **train_kwargs)
 
-    logger(f"--> Train dataset metadata:\n{train_dataset.get_metadata()}")
+    logger(f'--> Train dataset metadata:\n{train_dataset.get_metadata()}')
 
     # create evaluation dataset on demand
     eval_loader = None
     if cfg.eval_interval > 0:
         eval_dataset = FineTuneDataset(data_sources=cfg.eval_datasources)
 
-        eval_kwargs = {"batch_size": cfg.micro_batch_size}
+        eval_kwargs = {'batch_size': cfg.micro_batch_size}
         eval_kwargs.update(cuda_kwargs)
 
         eval_loader = DataLoader(eval_dataset, **eval_kwargs)
 
-        logger(f"--> Evaluation dataset metadata:\n{eval_dataset.get_metadata()}")
+        logger(f'--> Evaluation dataset metadata:\n{eval_dataset.get_metadata()}')
 
     # --------------- Setup model and optimizer ---------------
 
-    logger("\nInitialize model and FSDP ...")
+    logger('\nInitialize model and FSDP ...')
 
     torch.cuda.set_device(local_rank)
     clear_gpu_cache(local_rank)
@@ -318,12 +318,12 @@ def fsdp_main():
             resid_dropout=cfg.resid_dropout,
         )
 
-        logger(f"--> model metadata:\n{model.get_metadata()}")
-        logger(f"--> number of parameters: {model.get_num_params() / 1e6:.2f} million")
+        logger(f'--> model metadata:\n{model.get_metadata()}')
+        logger(f'--> number of parameters: {model.get_num_params() / 1e6:.2f} million')
 
         # Load model checkpoint before passing into FSDP
         if os.path.exists(cfg.pretrain_ckpt_file):
-            logger(f"--> load pretrained checkpoint {cfg.pretrain_ckpt_file}")
+            logger(f'--> load pretrained checkpoint {cfg.pretrain_ckpt_file}')
             ckpt_state = torch.load(cfg.pretrain_ckpt_file)
             # strict=False because missing keys due to LoRA weights not contained in checkpoint state
             model.load_state_dict(ckpt_state, strict=False)
@@ -337,7 +337,7 @@ def fsdp_main():
     bf16_ready = torch.version.cuda and torch.cuda.is_bf16_supported() and dist.is_nccl_available()
 
     mp_ctx = (
-        torch.autocast(device_type="cuda", dtype=torch.bfloat16 if bf16_ready else torch.float16)
+        torch.autocast(device_type='cuda', dtype=torch.bfloat16 if bf16_ready else torch.float16)
         if cfg.mixed_precision
         else nullcontext()
     )
@@ -394,10 +394,10 @@ def fsdp_main():
     # logger(f"--> FSDP model:\n{model}")
 
     if cfg.compile_model:
-        logger(f"--> compile model using torch.compile() ...")
+        logger('--> compile model using torch.compile() ...')
         model = torch.compile(model)
 
-    logger("\nInitialize optimizer ...")
+    logger('\nInitialize optimizer ...')
 
     optimizer = create_optimizer(
         model=model,
@@ -418,12 +418,12 @@ def fsdp_main():
 
     # --------------- Start Training ---------------
 
-    logger(f"\nStarting to run {cfg.max_train_iters} training iterations ...")
+    logger(f'\nStarting to run {cfg.max_train_iters} training iterations ...')
 
     torch_profiler = None
     # Careful as the logs will grow very fast
     if cfg.use_profiler:
-        torch_profiler = create_trace_profiler(os.path.join(cfg.log_dir, "profile_traces"))
+        torch_profiler = create_trace_profiler(os.path.join(cfg.log_dir, 'profile_traces'))
 
     tb_writer = None
     memmax = None
@@ -443,7 +443,7 @@ def fsdp_main():
             mem_alloc_tracker = []
             memmax.start()
 
-        inner_pbar = tqdm.tqdm(range(cfg.max_train_iters), colour="blue", desc="Training iterations")
+        inner_pbar = tqdm.tqdm(range(cfg.max_train_iters), colour='blue', desc='Training iterations')
 
     model.train()
     for iter in range(1, cfg.max_train_iters + 1):
@@ -473,10 +473,10 @@ def fsdp_main():
             )
 
             if tb_writer is not None:
-                tb_writer.add_scalar("train/loss", train_stats["loss"], iter)
-                tb_writer.add_scalar("train/accuracy", train_stats["accuracy"], iter)
-                tb_writer.add_scalar("train/perplexity", train_stats["perplexity"], iter)
-                tb_writer.add_scalar("train/learning_rate", train_stats["learning_rate"], iter)
+                tb_writer.add_scalar('train/loss', train_stats['loss'], iter)
+                tb_writer.add_scalar('train/accuracy', train_stats['accuracy'], iter)
+                tb_writer.add_scalar('train/perplexity', train_stats['perplexity'], iter)
+                tb_writer.add_scalar('train/learning_rate', train_stats['learning_rate'], iter)
 
             if cfg.track_gpu_mem_usage:
                 memmax.update()
@@ -487,7 +487,7 @@ def fsdp_main():
             # save model state
             checkpoint = lora_state_dict(model, bias=cfg.train_bias)
 
-            torch.save(checkpoint, os.path.join(cfg.ckpt_dir, f"lora_model_{model.model_name}-iter-{iter}.pt"))
+            torch.save(checkpoint, os.path.join(cfg.ckpt_dir, f'lora_model_{model.model_name}-iter-{iter}.pt'))
 
         # evaluation steps
         if cfg.eval_iters > 0 and (cfg.eval_interval > 0 and iter % cfg.eval_interval == 0 or iter == cfg.max_train_iters):
@@ -502,23 +502,23 @@ def fsdp_main():
                 )
 
                 if tb_writer is not None:
-                    tb_writer.add_scalar("eval/loss", eval_stats["loss"], iter)
-                    tb_writer.add_scalar("eval/accuracy", eval_stats["accuracy"], iter)
-                    tb_writer.add_scalar("eval/perplexity", eval_stats["perplexity"], iter)
+                    tb_writer.add_scalar('eval/loss', eval_stats['loss'], iter)
+                    tb_writer.add_scalar('eval/accuracy', eval_stats['accuracy'], iter)
+                    tb_writer.add_scalar('eval/perplexity', eval_stats['perplexity'], iter)
 
     if rank == 0:
         # training is done...show some training stats.
         if cfg.track_gpu_mem_usage:
             memmax.stop()
-            logger(f"Total memory allocated: {mem_alloc_tracker}")
-            logger(f"CUDA Memory Summary After Last training:\n{torch.cuda.memory_summary()}")
+            logger(f'Total memory allocated: {mem_alloc_tracker}')
+            logger(f'CUDA Memory Summary After Last training:\n{torch.cuda.memory_summary()}')
 
     # all done, set barrier to ensure all GPU's complete, and then cleanup
     dist.barrier()
     cleanup()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     torch.manual_seed(cfg.seed)
     np.random.seed(cfg.seed)
     random.seed(cfg.seed)
