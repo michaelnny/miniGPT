@@ -63,7 +63,7 @@ def convert_weights(model_type: str, save_path: str) -> None:
 
 
 if __name__ == '__main__':
-    convert_weights(model_type='gpt2', save_path='./checkpoints/gpt2-openai-pretrained.pt')
-    convert_weights(model_type='gpt2-medium', save_path='./checkpoints/gpt2-medium-openai-pretrained.pt')
-    convert_weights(model_type='gpt2-large', save_path='./checkpoints/gpt2-large-openai-pretrained.pt')
+    # convert_weights(model_type='gpt2', save_path='./checkpoints/gpt2-openai-pretrained.pt')
+    # convert_weights(model_type='gpt2-medium', save_path='./checkpoints/gpt2-medium-openai-pretrained.pt')
+    # convert_weights(model_type='gpt2-large', save_path='./checkpoints/gpt2-large-openai-pretrained.pt')
     convert_weights(model_type='gpt2-xl', save_path='./checkpoints/gpt2-xl-openai-pretrained.pt')

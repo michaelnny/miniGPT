@@ -1,5 +1,5 @@
 # miniGPT
-Try to implement a minimum version of GPT model for research and education purpose. Although we focus on the GPT model, the procedure is suitable to training any autoregressive language models.
+Try to implement a minimum version of GPT model for research and education purpose. Although we focus on the GPT model, the procedure is suitable to training any auto regressive language models.
 
 
 **Note**:
@@ -9,7 +9,7 @@ Our initial goal was trying to build a full pipeline including RLHF module follo
 ## What we got
 * data-preprocessing, pre-training, fine-tuning scripts for GPT-2 model
 * support PyTorch FSDP for distributed training
-* support fine-tuning from loading OpenAI pre-trained weights (through hugging face transformers)
+* support fine-tuning from loading OpenAI pre-trained weights
 * support fine-tuning with LoRA (no FSDP support since PyTorch 2.0.1 has some bug)
 
 
@@ -30,7 +30,7 @@ Our initial goal was trying to build a full pipeline including RLHF module follo
 *   `custom_dataset.py` contains code for custom dataset instances for pre-training and fine-tuning.
 *   `pretrain.py` contains code to run pre-training using FSDP.
 *   `finetune.py` contains code to run full fine-tuning using FSDP.
-*   `finetune_lora.py` contains code to run LoRA fine-tuning.
+*   `finetune_lora.py` contains code to run LoRA fine-tuning (requires PyTorch 2.1.0 nightly).
 *   `generate_pretrained.py` contains code to evaluate the pre-trained model (predict next token).
 *   `generate_finetuned.py` contains code to evaluate the fine-tuned model (answer questions).
 *   `convert_hf_checkpoint.py` contains code to convert OpenAI pre-trained GPT-2 weights to support our model, so we can load it to start fine-tuning.
@@ -42,7 +42,7 @@ Our initial goal was trying to build a full pipeline including RLHF module follo
 ```
 python3 -m pip install --upgrade pip setuptools
 
-python3 -m pip install -r requirements.txt 
+python3 -m pip install -r requirements.txt
 ```
 
 
@@ -84,7 +84,9 @@ tensorboard --logdir=./logs/pretrain
 
 # Fine-tuning
 
-Once we have a pre-trained model and the datasets are ready, we can start doing fine-tuning. We provide two options to do fine-tuning:
+Once we have a pre-trained model and the datasets are ready, we can start doing fine-tuning. Note we can skip the pretraining step and using the pretrained model provided by openAI instead (by running the convert_hf_checkpoint.py script).
+
+We provide two options to do fine-tuning:
 
 1. Full scale fine-tuning: similar to pre-training where all parameters of the model are trainable, this is the common solution but requires the same amount GPU compute power as pre-training.
 2. LoRA fine-tuning: a parameter efficient fine-tuning method, where we frozen most of the parameters and only train a small amount of them using some tricks. This makes fine-tuning LLM on constrained GPU compute budget possible, for example we can fine-tuning the 1.3B GPT-2 model on a single RTX 3090 GPU, which is often impossible if we use full scale fine-tuning.
@@ -107,7 +109,7 @@ tensorboard --logdir=./logs/finetune
 
 As explained before, LoRA makes fine-tuning LLM on constrained GPU compute budget possible by frozen most of the parameters and only train a small amount of them.
 
-**Note**: As of PyTorch 2.0.1, the FSDP module does not support LoRA, so we have commented out the code related to FSDP inside `finetune_lora.py`. This means the code does not support running on multiple GPUs at the moment. We hope with new PyTorch release, the issue will be fixed.
+**Note**: Only tested on one GPU, with PyTorch 2.1.0.dev20230804+cu121 with the support of FSDP module for LoRA.
 
 This examples shows how to lunch the LoRA fine-tuning script on a machine with 1 GPUs. By default, the script will write the logs to `./logs/finetune_lora`.
 ```
@@ -293,7 +295,3 @@ This project is greatly influenced by the following projects:
 The following projects have been very helpful to us to implement the LoRA fine-tuning scripts:
 * [Lit-LLaMA] (https://github.com/Lightning-AI/lit-llama)
 * [LoRA] (https://github.com/microsoft/LoRA)
-
-
-
-

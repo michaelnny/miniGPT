@@ -47,10 +47,7 @@ from configs.finetune_lora import config as cfg
 from utils import (
     CosineDecayWithWarmupLRScheduler,
     Memory_Maximizer,
-    load_full_state_model_checkpoint,
-    load_full_state_optimizer_checkpoint,
-    save_full_state_model_checkpoint,
-    save_full_state_optimizer_checkpoint,
+    save_lora_model_checkpoint,
     format_to_gb,
 )
 
@@ -91,7 +88,6 @@ def apply_fsdp_checkpointing(model):
 
 
 def run_single_train_step(
-    ctx,
     model,
     rank,
     world_size,
@@ -136,8 +132,7 @@ def run_single_train_step(
         if attn_mask is not None:
             attn_mask = attn_mask.to(local_rank, non_blocking=True)
 
-        with ctx:  # mixed precision workaround when FSDP does not support LoRA
-            output = model(x, attn_mask)
+        output = model(x, attn_mask)
 
         loss = compute_finetune_loss(output, y, loss_mask)
         # scale the loss to account for gradient accumulation
@@ -159,21 +154,14 @@ def run_single_train_step(
     if scaler is not None:  # when using float16
         if cfg.grad_clip != 0.0:
             scaler.unscale_(optimizer)  # unscale before clip gradients
-            torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
-
-        # if cfg.grad_clip != 0.0:
-        #     scaler.unscale_(optimizer)  # unscale before clip gradients
-        #     # FSDP needs to use this method to clip gradient norm instead of torch.nn.utils.clip_grad_norm_
-        #     model.clip_grad_norm_(cfg.grad_clip)
+            #  FSDP needs to use this method to clip gradient norm instead of torch.nn.utils.clip_grad_norm_
+            model.clip_grad_norm_(cfg.grad_clip)
 
         scaler.step(optimizer)
         scaler.update()  # adjust scaling for next batch
     else:
         if cfg.grad_clip != 0.0:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
-
-        # if cfg.grad_clip != 0.0:
-        #     model.clip_grad_norm_(cfg.grad_clip)
+            model.clip_grad_norm_(cfg.grad_clip)
 
         optimizer.step()
 
@@ -196,7 +184,7 @@ def run_single_train_step(
         return None
 
 
-def run_evaluation_steps(ctx, model, rank, world_size, eval_loader):
+def run_evaluation_steps(model, rank, world_size, eval_loader):
     """Run M evaluation iterations"""
     model.eval()  # set model in evaluation mode
 
@@ -220,8 +208,7 @@ def run_evaluation_steps(ctx, model, rank, world_size, eval_loader):
             if attn_mask is not None:
                 attn_mask = attn_mask.to(local_rank, non_blocking=True)
 
-            with ctx:
-                output = model(x, attn_mask)
+            output = model(x, attn_mask)
 
             loss = compute_finetune_loss(output, y, loss_mask)
 
@@ -330,68 +317,54 @@ def fsdp_main():
 
     mark_only_lora_as_trainable(model, bias=cfg.train_bias)
 
-    model = model.to(local_rank)
+    scaler = None
+    mixed_precision_policy = None  # defaults to fp32
 
-    scaler = torch.cuda.amp.GradScaler()
+    if cfg.mixed_precision:
+        bf16_ready = torch.version.cuda and torch.cuda.is_bf16_supported() and dist.is_nccl_available()
+        if bf16_ready:
+            logger('--> bFloat16 enabled for mixed precision ...')
+            mixed_precision_policy = MixedPrecision(
+                param_dtype=torch.bfloat16,
+                # Gradient communication precision.
+                reduce_dtype=torch.bfloat16,
+                # Buffer precision.
+                buffer_dtype=torch.bfloat16,
+            )
+        else:
+            logger('--> float16 enabled for mixed precision ...')
+            # requires grad scaler
+            scaler = ShardedGradScaler()
+            mixed_precision_policy = MixedPrecision(
+                param_dtype=torch.float16,
+                # Gradient communication precision.
+                reduce_dtype=torch.float16,
+                # Buffer precision.
+                buffer_dtype=torch.float16,
+            )
+    else:
+        logger('--> fallback to float32 ...')
 
-    bf16_ready = torch.version.cuda and torch.cuda.is_bf16_supported() and dist.is_nccl_available()
+    gpt2_auto_wrap_policy = functools.partial(transformer_auto_wrap_policy, transformer_layer_cls={EncoderBlock})
 
-    mp_ctx = (
-        torch.autocast(device_type='cuda', dtype=torch.bfloat16 if bf16_ready else torch.float16)
-        if cfg.mixed_precision
-        else nullcontext()
+    model = FSDP(
+        model,
+        auto_wrap_policy=gpt2_auto_wrap_policy,
+        mixed_precision=mixed_precision_policy,
+        backward_prefetch=cfg.backward_prefetch,
+        forward_prefetch=cfg.forward_prefetch,
+        cpu_offload=CPUOffload(offload_params=False),
+        sharding_strategy=cfg.sharding_strategy,
+        device_id=torch.cuda.current_device(),
+        limit_all_gathers=cfg.limit_all_gathers,
+        use_orig_params=True,  # need this since we're only use weight decay for some of the params
     )
 
-    # BUG, FSDP does not support LoRA
-    # ValueError: `FlatParameter` requires uniform `requires_grad`
-    # scaler = None
-    # mixed_precision_policy = None  # defaults to fp32
+    if cfg.fsdp_activation_checkpointing:
+        logger('--> applying FSDP activation checkpointing ...')
+        apply_fsdp_checkpointing(model)
 
-    # if cfg.mixed_precision:
-    #     bf16_ready = torch.version.cuda and torch.cuda.is_bf16_supported() and dist.is_nccl_available()
-    #     if bf16_ready:
-    #         logger(f"--> bFloat16 enabled for mixed precision ...")
-    #         mixed_precision_policy = MixedPrecision(
-    #             param_dtype=torch.bfloat16,
-    #             # Gradient communication precision.
-    #             reduce_dtype=torch.bfloat16,
-    #             # Buffer precision.
-    #             buffer_dtype=torch.bfloat16,
-    #         )
-    #     else:
-    #         logger(f"--> float16 enabled for mixed precision ...")
-    #         # requires grad scaler
-    #         scaler = ShardedGradScaler()
-    #         mixed_precision_policy = MixedPrecision(
-    #             param_dtype=torch.float16,
-    #             # Gradient communication precision.
-    #             reduce_dtype=torch.float16,
-    #             # Buffer precision.
-    #             buffer_dtype=torch.float16,
-    #         )
-    # else:
-    #     logger(f"--> fallback to float32 ...")
-
-    # gpt2_auto_wrap_policy = functools.partial(transformer_auto_wrap_policy, transformer_layer_cls={EncoderBlock})
-
-    # model = FSDP(
-    #     model,
-    #     auto_wrap_policy=gpt2_auto_wrap_policy,
-    #     mixed_precision=mixed_precision_policy,
-    #     backward_prefetch=cfg.backward_prefetch,
-    #     forward_prefetch=cfg.forward_prefetch,
-    #     cpu_offload=CPUOffload(offload_params=False),
-    #     sharding_strategy=cfg.sharding_strategy,
-    #     device_id=torch.cuda.current_device(),
-    #     limit_all_gathers=cfg.limit_all_gathers,
-    #     use_orig_params=True,  # need this since we're only use weight decay for some of the params
-    # )
-
-    # if cfg.fsdp_activation_checkpointing:
-    #     logger("--> applying FSDP activation checkpointing ...")
-    #     apply_fsdp_checkpointing(model)
-
-    # logger(f"--> FSDP model:\n{model}")
+    logger(f'--> FSDP model:\n{model}')
 
     if cfg.compile_model:
         logger('--> compile model using torch.compile() ...')
@@ -448,7 +421,6 @@ def fsdp_main():
     model.train()
     for iter in range(1, cfg.max_train_iters + 1):
         train_stats = run_single_train_step(
-            ctx=mp_ctx,
             model=model,
             rank=rank,
             world_size=world_size,
@@ -485,15 +457,16 @@ def fsdp_main():
         # checkpointing
         if cfg.ckpt_interval > 0 and iter % cfg.ckpt_interval == 0 or iter == cfg.max_train_iters:
             # save model state
-            checkpoint = lora_state_dict(model, bias=cfg.train_bias)
-
-            torch.save(checkpoint, os.path.join(cfg.ckpt_dir, f'lora_model_{model.model_name}-iter-{iter}.pt'))
+            save_lora_model_checkpoint(
+                model=model,
+                rank=rank,
+                ckpt_save_path=os.path.join(cfg.ckpt_dir, f'lora_model_{model.model_name}-iter-{iter}.pt'),
+                bias=cfg.train_bias,
+            )
 
         # evaluation steps
         if cfg.eval_iters > 0 and (cfg.eval_interval > 0 and iter % cfg.eval_interval == 0 or iter == cfg.max_train_iters):
-            eval_stats = run_evaluation_steps(
-                ctx=mp_ctx, model=model, rank=rank, world_size=world_size, eval_loader=eval_loader
-            )
+            eval_stats = run_evaluation_steps(model=model, rank=rank, world_size=world_size, eval_loader=eval_loader)
 
             if rank == 0:
                 logger(

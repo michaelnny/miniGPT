@@ -427,11 +427,11 @@ def mark_only_lora_as_trainable(model: nn.Module, bias: str = 'none') -> None:
         raise NotImplementedError
 
 
-def lora_state_dict(model: nn.Module, bias: str = 'none') -> Dict[str, torch.Tensor]:
+def lora_state_dict(state_dict: dict, bias: str = 'none') -> Dict[str, torch.Tensor]:
     """Return state_dict with weights of LoRA's A and B matrices and with biases depending on the `bias` value.
 
     Args:
-        model: model with LoRA layers
+        state_dict: nn.Module state dict with LoRA weights
         bias:
             ``"none"``: state dict will not store bias weights,
             ``"lora_only"``: state dict will store bias weights only from LoRA layers,
@@ -443,19 +443,19 @@ def lora_state_dict(model: nn.Module, bias: str = 'none') -> Dict[str, torch.Ten
     Raises:
         NotImplementedError: if `bias` not in ["none", "lora_only", "all"]
     """
-    my_state_dict = model.state_dict()
+    # state_dict = model.state_dict()
     if bias == 'none':
-        return {k: my_state_dict[k] for k in my_state_dict if 'lora_' in k}
+        return {k: state_dict[k] for k in state_dict if 'lora_' in k}
     elif bias == 'all':
-        return {k: my_state_dict[k] for k in my_state_dict if 'lora_' in k or 'bias' in k}
+        return {k: state_dict[k] for k in state_dict if 'lora_' in k or 'bias' in k}
     elif bias == 'lora_only':
         to_return = {}
-        for k in my_state_dict:
+        for k in state_dict:
             if 'lora_' in k:
-                to_return[k] = my_state_dict[k]
+                to_return[k] = state_dict[k]
                 bias_name = k.split('lora_')[0] + 'bias'
-                if bias_name in my_state_dict:
-                    to_return[bias_name] = my_state_dict[bias_name]
+                if bias_name in state_dict:
+                    to_return[bias_name] = state_dict[bias_name]
         return to_return
     else:
         raise NotImplementedError

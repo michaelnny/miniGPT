@@ -1,5 +1,5 @@
 """
-Module for build datasets by loading .txt or .jsonl files and tokenize the content, 
+Module for build datasets by loading .txt or .jsonl files and tokenize the content,
 note this module assumes the text have already been cleaned.
 """
 
@@ -68,7 +68,7 @@ def jsonl_file_to_tokens(input_file, output_dir, min_length, test_ratio, eval_ra
     base_name = os.path.basename(input_file)
 
     for data in json_objs:
-        if not 'text' in data:
+        if 'text' not in data:
             continue
 
         # Access the text field
@@ -179,7 +179,7 @@ def _save_dataset_to_disk(metadata, output_dir, data_type, dataset_prefix, num_t
     # Also save metadata to .pkl since json file can be easily changed
     pickle.dump(metadata, open(meta_file_kpl, 'wb'))
 
-    with open(meta_file_json, 'w', encoding="utf-8") as f:
+    with open(meta_file_json, 'w', encoding='utf-8') as f:
         json.dump(metadata, f, indent=2, sort_keys=True)
 
 
@@ -475,12 +475,12 @@ def build_datasets_from_jsonl_files(
             )
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     logger = create_logger()
 
     build_datasets_from_jsonl_files(
-        src_dir="./clean_data/zhwiki_latest",
-        output_dir="./datasets/zhwiki",
+        src_dir='./clean_data/zhwiki_latest',
+        output_dir='./datasets/zhwiki',
         logger=logger,
         overwrite_output=False,
         num_workers=16,
@@ -488,8 +488,8 @@ if __name__ == "__main__":
     )
 
     build_datasets_from_jsonl_files(
-        src_dir="./clean_data/enwiki_latest",
-        output_dir="./datasets/enwiki",
+        src_dir='./clean_data/enwiki_latest',
+        output_dir='./datasets/enwiki',
         logger=logger,
         overwrite_output=False,
         num_workers=16,
@@ -497,8 +497,8 @@ if __name__ == "__main__":
     )
 
     build_datasets_from_jsonl_files(
-        src_dir="./clean_data/openwebtext2",
-        output_dir="./datasets/openwebtext2",
+        src_dir='./clean_data/openwebtext2',
+        output_dir='./datasets/openwebtext2',
         logger=logger,
         overwrite_output=False,
         num_workers=16,

@@ -1,4 +1,3 @@
-from pathlib import Path
 import torch
 
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
@@ -20,17 +19,27 @@ from torch.distributed.fsdp.api import (
     StateDictType,
 )
 
+
+# support running without installing as a package
+from pathlib import Path
+import sys
+
+wd = Path(__file__).parent.parent.resolve()
+sys.path.append(str(wd))
+
+from models import lora_state_dict
+
+
 full_state_model_config = FullStateDictConfig(offload_to_cpu=False, rank0_only=True)
 full_state_optim_config = FullOptimStateDictConfig(offload_to_cpu=False, rank0_only=True)
 
 
-def save_full_state_model_checkpoint(model, rank, ckpt_save_path, overwrite=False, verbose=True):
-    """saving model via rank0 cpu streaming and full_state_dict"""
-
+def save_lora_model_checkpoint(model, rank, ckpt_save_path, bias: str = 'none', overwrite=False, verbose=True):
+    """Save lora weights to checkpoint"""
     save_full_path = Path(ckpt_save_path)
     if rank == 0:
         if not overwrite and save_full_path.exists():
-            print(f"a file with the same name already exists at {save_full_path}, aborting...")
+            print(f'a file with the same name already exists at {save_full_path}, aborting...')
             return
         else:
             save_dir = save_full_path.parent
@@ -45,16 +54,51 @@ def save_full_state_model_checkpoint(model, rank, ckpt_save_path, overwrite=Fals
         model_state = model.state_dict()
 
     if verbose:
-        print(f"model state_dict ready on rank {rank}\n")
+        print(f'model state_dict ready on rank {rank}\n')
 
     if rank == 0:
         if verbose:
-            print(f"--> saving model ...")
+            print('--> saving lora model ...')
+
+        lora_state = lora_state_dict(model_state, bias)
+
+        torch.save(lora_state, save_full_path)
+
+        if verbose:
+            print(f'--> model checkpoint saved at {save_full_path}\n')
+
+
+def save_full_state_model_checkpoint(model, rank, ckpt_save_path, overwrite=False, verbose=True):
+    """saving model via rank0 cpu streaming and full_state_dict"""
+
+    save_full_path = Path(ckpt_save_path)
+    if rank == 0:
+        if not overwrite and save_full_path.exists():
+            print(f'a file with the same name already exists at {save_full_path}, aborting...')
+            return
+        else:
+            save_dir = save_full_path.parent
+            save_dir.mkdir(parents=True, exist_ok=True)
+
+    with FSDP.state_dict_type(
+        model,
+        state_dict_type=StateDictType.FULL_STATE_DICT,
+        state_dict_config=full_state_model_config,
+        optim_state_dict_config=full_state_optim_config,
+    ):
+        model_state = model.state_dict()
+
+    if verbose:
+        print(f'model state_dict ready on rank {rank}\n')
+
+    if rank == 0:
+        if verbose:
+            print('--> saving model ...')
 
         torch.save(model_state, save_full_path)
 
         if verbose:
-            print(f"--> model checkpoint saved at {save_full_path}\n")
+            print(f'--> model checkpoint saved at {save_full_path}\n')
 
 
 def load_full_state_model_checkpoint(model, rank, full_state_ckpt_file, strict=True, verbose=True):
@@ -68,7 +112,7 @@ def load_full_state_model_checkpoint(model, rank, full_state_ckpt_file, strict=T
     model_full_state_dict_path = Path(full_state_ckpt_file)
     # is it present...
     if not model_full_state_dict_path.is_file():
-        print(f"model checkpoint {model_full_state_dict_path} not present. aborting...")
+        print(f'model checkpoint {model_full_state_dict_path} not present. aborting...')
         return
 
     model_checkpoint = torch.load(model_full_state_dict_path)
@@ -85,14 +129,14 @@ def save_full_state_optimizer_checkpoint(model, optimizer, rank, ckpt_save_path,
     save_full_path = Path(ckpt_save_path)
     if rank == 0:
         if not overwrite and save_full_path.exists():
-            print(f"a file with the same name already exists at {save_full_path}, aborting...")
+            print(f'a file with the same name already exists at {save_full_path}, aborting...')
             return
         else:
             save_dir = save_full_path.parent
             save_dir.mkdir(parents=True, exist_ok=True)
 
     if verbose:
-        print(f"--> optim state call on rank {rank}\n")
+        print(f'--> optim state call on rank {rank}\n')
 
     # pull all sharded optimizer states to rank0 cpu...
     with FSDP.state_dict_type(
@@ -104,15 +148,15 @@ def save_full_state_optimizer_checkpoint(model, optimizer, rank, ckpt_save_path,
         optim_state = FSDP.optim_state_dict(model, optimizer)
 
     if verbose:
-        print(f"optim state dict ready on {rank} and len of {len(optim_state)}\n")
+        print(f'optim state dict ready on {rank} and len of {len(optim_state)}\n')
 
     if rank == 0:
-        print(f"--> saving optimizer state...")
+        print('--> saving optimizer state...')
 
         torch.save(optim_state, save_full_path)
 
         if verbose:
-            print(f"--> optimizer checkpoint saved at {save_full_path}\n")
+            print(f'--> optimizer checkpoint saved at {save_full_path}\n')
 
 
 def load_full_state_optimizer_checkpoint(model, optimizer, rank, full_state_ckpt_file, verbose=True):
@@ -124,7 +168,7 @@ def load_full_state_optimizer_checkpoint(model, optimizer, rank, full_state_ckpt
     optim_full_state_dict_path = Path(full_state_ckpt_file)
     # is it present...
     if not optim_full_state_dict_path.is_file():
-        print(f"optimizer checkpoint {optim_full_state_dict_path} not present. aborting...")
+        print(f'optimizer checkpoint {optim_full_state_dict_path} not present. aborting...')
         return
 
     full_osd = None
@@ -133,10 +177,10 @@ def load_full_state_optimizer_checkpoint(model, optimizer, rank, full_state_ckpt
         full_osd = torch.load(optim_full_state_dict_path)
 
         if verbose:
-            print(f"loaded full optimizer state on rank 0")
+            print('loaded full optimizer state on rank 0')
 
     # called from all ranks, though only rank0 has a valid param for full_osd
-    sharded_osd = FSDP.scatter_full_optim_state_dict(full_osd, model)
+    _ = FSDP.scatter_full_optim_state_dict(full_osd, model)
 
     if verbose:
-        print(f"optimizer shard loaded on rank {rank}")
+        print(f'optimizer shard loaded on rank {rank}')

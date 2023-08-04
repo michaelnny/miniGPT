@@ -5,6 +5,7 @@ from .schedule import CosineDecayWithWarmupLRScheduler, LinearWarmupLRScheduler
 from .log import CsvWriter, create_logger
 from .file_helper import find_certain_files_under_dir, read_jsonl_file, read_txt_file, count_words
 from .fsdp_checkpoint import (
+    save_lora_model_checkpoint,
     save_full_state_model_checkpoint,
     save_full_state_optimizer_checkpoint,
     load_full_state_model_checkpoint,

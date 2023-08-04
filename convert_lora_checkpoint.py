@@ -63,16 +63,23 @@ def merge_lora_checkpoint(
         model.load_state_dict(lora_checkpoint, strict=False)
 
     model.eval()
+
+    print('Merging lora model state ...')
     merged_model_dict = del_lora_state_dict(model)
-    print('Saving LoRA to base model weights ...')
     torch.save(merged_model_dict, save_path)
     print(f'Merged model state dict saved at {save_path}')
 
 
 if __name__ == '__main__':
+    # merge_lora_checkpoint(
+    #     model_type='gpt2-xl',
+    #     lora_ckpt_path='./checkpoints/finetune_lora/lora_model_gpt2-xl-iter-2000.pt',
+    #     pretrained_ckpt_path='./checkpoints/gpt2-xl-openai-pretrained.pt',
+    #     save_path='./checkpoints/gpt2-xl-finetune-iter-2000-merged.pt',
+    # )
     merge_lora_checkpoint(
         model_type='gpt2-xl',
-        lora_ckpt_path='./checkpoints/finetune_lora/lora_model_gpt2-xl-iter-2000.pt',
+        lora_ckpt_path='./checkpoints_test/finetune_lora/lora_model_gpt2-xl-iter-100.pt',
         pretrained_ckpt_path='./checkpoints/gpt2-xl-openai-pretrained.pt',
-        save_path='./checkpoints/gpt2-xl-finetune-iter-2000-merged.pt',
+        save_path='./checkpoints_test/gpt2-xl-finetune-iter-100-merged.pt',
     )
