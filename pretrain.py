@@ -54,7 +54,7 @@ from utils import (
 # helper functions for FSDP
 def setup():
     # initialize the process group
-    dist.init_process_group("nccl")
+    dist.init_process_group('nccl')
 
 
 def cleanup():
@@ -62,7 +62,7 @@ def cleanup():
 
 
 def clear_gpu_cache(rank=None):
-    print(f"clearing cache for rank {rank}")
+    print(f'clearing cache for rank {rank}')
     torch.cuda.empty_cache()
 
 
@@ -77,7 +77,7 @@ def apply_fsdp_checkpointing(model):
     """apply activation checkpointing to model
     returns None as model is updated directly
     """
-    check_fn = lambda submodule: isinstance(submodule, EncoderBlock)
+    check_fn = lambda submodule: isinstance(submodule, EncoderBlock)  # noqa: E731
 
     apply_activation_checkpointing(model, checkpoint_wrapper_fn=non_reentrant_wrapper, check_fn=check_fn)
 
@@ -146,10 +146,10 @@ def run_single_train_step(
 
     """
 
-    local_rank = int(os.environ["LOCAL_RANK"])
+    local_rank = int(os.environ['LOCAL_RANK'])
 
     if return_stats:
-        fsdp_metrics = torch.zeros(5).to(local_rank)
+        metrics = torch.zeros(5).to(local_rank)
 
     # prepare for next update
     optimizer.zero_grad(set_to_none=True)
@@ -169,11 +169,11 @@ def run_single_train_step(
 
         if return_stats:
             num_acc, num_samples = compute_metrics(output, y)
-            fsdp_metrics[0] += loss.item()  # sum up batch loss
-            fsdp_metrics[1] += np.exp(loss.item())  # sum up perplexity
-            fsdp_metrics[2] += 1  # increase number of batches
-            fsdp_metrics[3] += num_acc  # sum up number of accurate prediction tokens
-            fsdp_metrics[4] += num_samples  # sum up number of tokens
+            metrics[0] += loss.item()  # sum up batch loss
+            metrics[1] += np.exp(loss.item())  # sum up perplexity
+            metrics[2] += 1  # increase number of batches
+            metrics[3] += num_acc  # sum up number of accurate prediction tokens
+            metrics[4] += num_samples  # sum up number of tokens
 
     if scaler is not None:  # when using float16
         if cfg.grad_clip != 0.0:
@@ -190,17 +190,17 @@ def run_single_train_step(
     scheduler.step()  # call lr scheduler on a step-by-step basis instead of epoch
 
     if return_stats:
-        dist.all_reduce(fsdp_metrics, op=dist.ReduceOp.SUM)
-        train_loss = fsdp_metrics[0] / fsdp_metrics[2]
-        train_perplexity = fsdp_metrics[1] / fsdp_metrics[2]
-        train_accuracy = 100 * fsdp_metrics[3] / fsdp_metrics[4]
+        dist.all_reduce(metrics, op=dist.ReduceOp.SUM)
+        train_loss = metrics[0] / metrics[2]
+        train_perplexity = metrics[1] / metrics[2]
+        train_accuracy = 100 * metrics[3] / metrics[4]
 
-        lr = optimizer.param_groups[0]["lr"]
+        lr = optimizer.param_groups[0]['lr']
         return {
-            "loss": train_loss.item(),
-            "accuracy": train_accuracy.item(),
-            "perplexity": train_perplexity.item(),
-            "learning_rate": lr,
+            'loss': train_loss.item(),
+            'accuracy': train_accuracy.item(),
+            'perplexity': train_perplexity.item(),
+            'learning_rate': lr,
         }
     else:
         return None
@@ -210,13 +210,13 @@ def run_evaluation_steps(model, rank, world_size, eval_loader):
     """Run M evaluation iterations"""
     model.eval()  # set model in evaluation mode
 
-    local_rank = int(os.environ["LOCAL_RANK"])
+    local_rank = int(os.environ['LOCAL_RANK'])
 
-    fsdp_metrics = torch.zeros(5).to(local_rank)
+    metrics = torch.zeros(5).to(local_rank)
 
     inner_pbar = None
     if rank == 0:
-        inner_pbar = tqdm.tqdm(range(cfg.eval_iters), colour="green", desc="Evaluation iterations")
+        inner_pbar = tqdm.tqdm(range(cfg.eval_iters), colour='green', desc='Evaluation iterations')
 
     with torch.no_grad():
         for x, y in itertools.islice(eval_loader, cfg.eval_iters):
@@ -226,26 +226,26 @@ def run_evaluation_steps(model, rank, world_size, eval_loader):
             loss = compute_pre_train_loss(output, y)
 
             num_acc, num_samples = compute_metrics(output, y)
-            fsdp_metrics[0] += loss.item()  # sum up batch loss
-            fsdp_metrics[1] += np.exp(loss.item())  # sum up perplexity
-            fsdp_metrics[2] += 1  # increase number of batches
-            fsdp_metrics[3] += num_acc  # sum up number of accurate prediction tokens
-            fsdp_metrics[4] += num_samples  # sum up number of tokens
+            metrics[0] += loss.item()  # sum up batch loss
+            metrics[1] += np.exp(loss.item())  # sum up perplexity
+            metrics[2] += 1  # increase number of batches
+            metrics[3] += num_acc  # sum up number of accurate prediction tokens
+            metrics[4] += num_samples  # sum up number of tokens
 
             if inner_pbar is not None:
                 inner_pbar.update(1)
 
-    dist.all_reduce(fsdp_metrics, op=dist.ReduceOp.SUM)
-    eval_loss = fsdp_metrics[0] / fsdp_metrics[2]
-    eval_perplexity = fsdp_metrics[1] / fsdp_metrics[2]
-    eval_accuracy = 100 * fsdp_metrics[3] / fsdp_metrics[4]
+    dist.all_reduce(metrics, op=dist.ReduceOp.SUM)
+    eval_loss = metrics[0] / metrics[2]
+    eval_perplexity = metrics[1] / metrics[2]
+    eval_accuracy = 100 * metrics[3] / metrics[4]
 
     if inner_pbar is not None:
         inner_pbar.close()
 
     model.train()  # set model in training mode after evaluation runs
 
-    return {"loss": eval_loss.item(), "accuracy": eval_accuracy.item(), 'perplexity': eval_perplexity.item()}
+    return {'loss': eval_loss.item(), 'accuracy': eval_accuracy.item(), 'perplexity': eval_perplexity.item()}
 
 
 def rank0_logger(msg, rank):
@@ -253,15 +253,15 @@ def rank0_logger(msg, rank):
         print(msg)
 
 
-def fsdp_main():
+def fsdp_main():  # noqa: C901
     assert cfg.start_from_iter >= 0
     assert cfg.micro_batch_size >= 1
     assert cfg.gradient_accum_steps >= 1
     assert cfg.log_interval >= 10
 
-    local_rank = int(os.environ["LOCAL_RANK"])
-    rank = int(os.environ["RANK"])
-    world_size = int(os.environ["WORLD_SIZE"])
+    local_rank = int(os.environ['LOCAL_RANK'])
+    rank = int(os.environ['RANK'])
+    world_size = int(os.environ['WORLD_SIZE'])
 
     setup()
 
@@ -269,7 +269,7 @@ def fsdp_main():
 
     # --------------- Load datasets ---------------
 
-    logger("\nLoading datasets ...")
+    logger('\nLoading datasets ...')
     train_dataset = BlendedDataset(
         data_sources=cfg.train_datasources,
         max_seq_length=cfg.max_seq_length,
@@ -279,14 +279,15 @@ def fsdp_main():
     )
 
     # Our custom IterableDatasets already have sharding and shuffle mechanism implemented
-    cuda_kwargs = {"num_workers": cfg.dataloader_workers, "pin_memory": True, "shuffle": False, "sampler": None}
-
-    train_kwargs = {"batch_size": cfg.micro_batch_size}
-
-    train_kwargs.update(cuda_kwargs)
-    train_loader = DataLoader(train_dataset, **train_kwargs)
-
-    logger(f"--> Train dataset metadata:\n{train_dataset.get_metadata()}")
+    cuda_kwargs = {
+        'num_workers': cfg.dataloader_workers,
+        'batch_size': cfg.micro_batch_size,
+        'pin_memory': True,
+        'shuffle': False,
+        'sampler': None,
+    }
+    train_loader = DataLoader(train_dataset, **cuda_kwargs)
+    logger(f'--> Train dataset metadata:\n{train_dataset.get_metadata()}')
 
     # create evaluation dataset on demand
     eval_loader = None
@@ -298,17 +299,12 @@ def fsdp_main():
             world_size=world_size,  # shard the dataset
             seed=int(cfg.seed + rank),
         )
-
-        eval_kwargs = {"batch_size": cfg.micro_batch_size}
-        eval_kwargs.update(cuda_kwargs)
-
-        eval_loader = DataLoader(eval_dataset, **eval_kwargs)
-
-        logger(f"--> Evaluation dataset metadata:\n{eval_dataset.get_metadata()}")
+        eval_loader = DataLoader(eval_dataset, **cuda_kwargs)
+        logger(f'--> Evaluation dataset metadata:\n{eval_dataset.get_metadata()}')
 
     # --------------- Setup model and optimizer ---------------
 
-    logger("\nInitialize model and FSDP ...")
+    logger('\nInitialize model and FSDP ...')
 
     torch.cuda.set_device(local_rank)
     clear_gpu_cache(local_rank)
@@ -320,8 +316,8 @@ def fsdp_main():
         resid_dropout=cfg.resid_dropout,
     )
 
-    logger(f"--> model metadata:\n{model.get_metadata()}")
-    logger(f"--> number of parameters: {model.get_num_params() / 1e6:.2f} million")
+    logger(f'--> model metadata:\n{model.get_metadata()}')
+    logger(f'--> number of parameters: {model.get_num_params() / 1e6:.2f} million')
 
     # Load model checkpoint before passing into FSDP
     if cfg.load_model_ckpt and os.path.exists(cfg.load_model_ckpt):
@@ -336,7 +332,7 @@ def fsdp_main():
     if cfg.mixed_precision:
         bf16_ready = torch.version.cuda and torch.cuda.is_bf16_supported() and dist.is_nccl_available()
         if bf16_ready:
-            logger(f"--> bFloat16 enabled for mixed precision ...")
+            logger('--> bFloat16 enabled for mixed precision ...')
             mixed_precision_policy = MixedPrecision(
                 param_dtype=torch.bfloat16,
                 # Gradient communication precision.
@@ -345,7 +341,7 @@ def fsdp_main():
                 buffer_dtype=torch.bfloat16,
             )
         else:
-            logger(f"--> float16 enabled for mixed precision ...")
+            logger('--> float16 enabled for mixed precision ...')
             # requires grad scaler
             scaler = ShardedGradScaler()
             mixed_precision_policy = MixedPrecision(
@@ -356,13 +352,13 @@ def fsdp_main():
                 buffer_dtype=torch.float16,
             )
     else:
-        logger(f"--> fallback to float32 ...")
+        logger('--> fallback to float32 ...')
 
-    gpt2_auto_wrap_policy = functools.partial(transformer_auto_wrap_policy, transformer_layer_cls={EncoderBlock})
+    _auto_wrap_policy = functools.partial(transformer_auto_wrap_policy, transformer_layer_cls={EncoderBlock})
 
     model = FSDP(
         model,
-        auto_wrap_policy=gpt2_auto_wrap_policy,
+        auto_wrap_policy=_auto_wrap_policy,
         mixed_precision=mixed_precision_policy,
         backward_prefetch=cfg.backward_prefetch,
         forward_prefetch=cfg.forward_prefetch,
@@ -374,16 +370,16 @@ def fsdp_main():
     )
 
     if cfg.fsdp_activation_checkpointing:
-        logger("--> applying FSDP activation checkpointing ...")
+        logger('--> applying FSDP activation checkpointing ...')
         apply_fsdp_checkpointing(model)
 
-    logger(f"--> FSDP model:\n{model}")
+    logger(f'--> FSDP model:\n{model}')
 
     if cfg.compile_model:
-        logger(f"--> compile model using torch.compile() ...")
+        logger('--> compile model using torch.compile() ...')
         model = torch.compile(model)
 
-    logger("\nInitialize optimizer ...")
+    logger('\nInitialize optimizer ...')
 
     optimizer = create_optimizer(
         model=model,
@@ -415,17 +411,17 @@ def fsdp_main():
             scheduler.step()
 
         if rank == 0:
-            current_lr = optimizer.param_groups[0]["lr"]
+            current_lr = optimizer.param_groups[0]['lr']
             logger(f'Current learning rate is: {current_lr:.6f}')
 
     # --------------- Start Training ---------------
 
-    logger(f"\nStarting to run {cfg.max_train_iters - cfg.start_from_iter} training iterations ...")
+    logger(f'\nStarting to run {cfg.max_train_iters - cfg.start_from_iter} training iterations ...')
 
     torch_profiler = None
     # Careful as the logs will grow very fast
     if cfg.use_profiler:
-        torch_profiler = create_trace_profiler(os.path.join(cfg.log_dir, "profile_traces"))
+        torch_profiler = create_trace_profiler(os.path.join(cfg.log_dir, 'profile_traces'))
 
     tb_writer = None
     memmax = None
@@ -445,7 +441,7 @@ def fsdp_main():
             mem_alloc_tracker = []
             memmax.start()
 
-        inner_pbar = tqdm.tqdm(range(cfg.max_train_iters), colour="blue", desc="Training iterations")
+        inner_pbar = tqdm.tqdm(range(cfg.max_train_iters), colour='blue', desc='Training iterations')
 
     model.train()
     for iter in range(cfg.start_from_iter + 1, cfg.max_train_iters + 1):
@@ -474,10 +470,10 @@ def fsdp_main():
             )
 
             if tb_writer is not None:
-                tb_writer.add_scalar("train/loss", train_stats["loss"], iter)
-                tb_writer.add_scalar("train/accuracy", train_stats["accuracy"], iter)
-                tb_writer.add_scalar("train/perplexity", train_stats["perplexity"], iter)
-                tb_writer.add_scalar("train/learning_rate", train_stats["learning_rate"], iter)
+                tb_writer.add_scalar('train/loss', train_stats['loss'], iter)
+                tb_writer.add_scalar('train/accuracy', train_stats['accuracy'], iter)
+                tb_writer.add_scalar('train/perplexity', train_stats['perplexity'], iter)
+                tb_writer.add_scalar('train/learning_rate', train_stats['learning_rate'], iter)
 
             if cfg.track_gpu_mem_usage:
                 memmax.update()
@@ -488,7 +484,7 @@ def fsdp_main():
             # save model state
             if cfg.checkpoint_type == StateDictType.FULL_STATE_DICT:
                 save_full_state_model_checkpoint(
-                    model, rank, os.path.join(cfg.ckpt_dir, f"model_{model.model_name}-iter-{iter}.pt")
+                    model, rank, os.path.join(cfg.ckpt_dir, f'model_{model.model_name}-iter-{iter}.pt')
                 )
             elif cfg.checkpoint_type == StateDictType.SHARDED_STATE_DICT:
                 pass
@@ -500,7 +496,7 @@ def fsdp_main():
                         model,
                         optimizer,
                         rank,
-                        os.path.join(cfg.ckpt_dir, f"optim_{model.model_name}-iter-{iter}.pt"),
+                        os.path.join(cfg.ckpt_dir, f'optim_{model.model_name}-iter-{iter}.pt'),
                     )
                 elif cfg.checkpoint_type == StateDictType.SHARDED_STATE_DICT:
                     pass
@@ -516,30 +512,30 @@ def fsdp_main():
                 )
 
                 if tb_writer is not None:
-                    tb_writer.add_scalar("eval/loss", eval_stats["loss"], iter)
-                    tb_writer.add_scalar("eval/accuracy", eval_stats["accuracy"], iter)
-                    tb_writer.add_scalar("eval/perplexity", eval_stats["perplexity"], iter)
+                    tb_writer.add_scalar('eval/loss', eval_stats['loss'], iter)
+                    tb_writer.add_scalar('eval/accuracy', eval_stats['accuracy'], iter)
+                    tb_writer.add_scalar('eval/perplexity', eval_stats['perplexity'], iter)
 
     if rank == 0:
         # training is done...show some training stats.
         if cfg.track_gpu_mem_usage:
             memmax.stop()
-            logger(f"Total memory allocated: {mem_alloc_tracker}")
-            logger(f"CUDA Memory Summary After Last training:\n{torch.cuda.memory_summary()}")
+            logger(f'Total memory allocated: {mem_alloc_tracker}')
+            logger(f'CUDA Memory Summary After Last training:\n{torch.cuda.memory_summary()}')
 
     # all done, set barrier to ensure all GPU's complete, and then cleanup
     dist.barrier()
     cleanup()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     torch.manual_seed(cfg.seed)
     np.random.seed(cfg.seed)
     random.seed(cfg.seed)
 
-    # torch.set_float32_matmul_precision("high")
+    torch.set_float32_matmul_precision('high')
 
-    # torch.backends.cuda.enable_flash_sdp(True)
+    torch.backends.cuda.enable_flash_sdp(True)
     # torch.backends.cuda.enable_mem_efficient_sdp(True)
     # torch.backends.cuda.enable_math_sdp(False)
 

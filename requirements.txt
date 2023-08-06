@@ -7,6 +7,8 @@ numpy==1.24.3
 
 tensorboard==2.13.0
 tensorboard-data-server==0.7.1
+torch_tb_profiler==0.4.1
+torch_tb_profiler
 tqdm==4.65.0
 ipympl==0.9.3
 

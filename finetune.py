@@ -177,7 +177,7 @@ def run_single_train_step(
     local_rank = int(os.environ['LOCAL_RANK'])
 
     if return_stats:
-        fsdp_metrics = torch.zeros(5).to(local_rank)
+        metrics = torch.zeros(5).to(local_rank)
 
     # prepare for next update
     optimizer.zero_grad(set_to_none=True)
@@ -207,11 +207,11 @@ def run_single_train_step(
 
         if return_stats:
             num_acc, num_samples = compute_metrics(output, y, loss_mask)
-            fsdp_metrics[0] += loss.item()  # sum up batch loss
-            fsdp_metrics[1] += np.exp(loss.item())  # sum up perplexity
-            fsdp_metrics[2] += 1  # increase number of batches
-            fsdp_metrics[3] += num_acc  # sum up number of accurate prediction tokens
-            fsdp_metrics[4] += num_samples  # sum up number of tokens
+            metrics[0] += loss.item()  # sum up batch loss
+            metrics[1] += np.exp(loss.item())  # sum up perplexity
+            metrics[2] += 1  # increase number of batches
+            metrics[3] += num_acc  # sum up number of accurate prediction tokens
+            metrics[4] += num_samples  # sum up number of tokens
 
     if scaler is not None:  # when using float16
         if cfg.grad_clip != 0.0:
@@ -228,10 +228,10 @@ def run_single_train_step(
     scheduler.step()  # call lr scheduler on a step-by-step basis instead of epoch
 
     if return_stats:
-        dist.all_reduce(fsdp_metrics, op=dist.ReduceOp.SUM)
-        train_loss = fsdp_metrics[0] / fsdp_metrics[2]
-        train_perplexity = fsdp_metrics[1] / fsdp_metrics[2]
-        train_accuracy = 100 * fsdp_metrics[3] / fsdp_metrics[4]
+        dist.all_reduce(metrics, op=dist.ReduceOp.SUM)
+        train_loss = metrics[0] / metrics[2]
+        train_perplexity = metrics[1] / metrics[2]
+        train_accuracy = 100 * metrics[3] / metrics[4]
 
         lr = optimizer.param_groups[0]['lr']
         return {
@@ -250,7 +250,7 @@ def run_evaluation_steps(model, rank, world_size, eval_loader):
 
     local_rank = int(os.environ['LOCAL_RANK'])
 
-    fsdp_metrics = torch.zeros(5).to(local_rank)
+    metrics = torch.zeros(5).to(local_rank)
 
     inner_pbar = None
     if rank == 0:
@@ -273,19 +273,19 @@ def run_evaluation_steps(model, rank, world_size, eval_loader):
             loss = compute_finetune_loss(output, y, loss_mask)
 
             num_acc, num_samples = compute_metrics(output, y, loss_mask)
-            fsdp_metrics[0] += loss.item()  # sum up batch loss
-            fsdp_metrics[1] += np.exp(loss.item())  # sum up perplexity
-            fsdp_metrics[2] += 1  # increase number of batches
-            fsdp_metrics[3] += num_acc  # sum up number of accurate prediction tokens
-            fsdp_metrics[4] += num_samples  # sum up number of tokens
+            metrics[0] += loss.item()  # sum up batch loss
+            metrics[1] += np.exp(loss.item())  # sum up perplexity
+            metrics[2] += 1  # increase number of batches
+            metrics[3] += num_acc  # sum up number of accurate prediction tokens
+            metrics[4] += num_samples  # sum up number of tokens
 
             if inner_pbar is not None:
                 inner_pbar.update(1)
 
-    dist.all_reduce(fsdp_metrics, op=dist.ReduceOp.SUM)
-    eval_loss = fsdp_metrics[0] / fsdp_metrics[2]
-    eval_perplexity = fsdp_metrics[1] / fsdp_metrics[2]
-    eval_accuracy = 100 * fsdp_metrics[3] / fsdp_metrics[4]
+    dist.all_reduce(metrics, op=dist.ReduceOp.SUM)
+    eval_loss = metrics[0] / metrics[2]
+    eval_perplexity = metrics[1] / metrics[2]
+    eval_accuracy = 100 * metrics[3] / metrics[4]
 
     if inner_pbar is not None:
         inner_pbar.close()
@@ -415,27 +415,21 @@ def fsdp_main():
     cuda_kwargs = {
         'collate_fn': _collate_fn,
         'num_workers': cfg.dataloader_workers,
+        'batch_size': cfg.micro_batch_size,
         'pin_memory': True,
         'shuffle': False,
     }
 
-    train_kwargs = {'batch_size': cfg.micro_batch_size, 'sampler': train_sampler}
-
+    train_kwargs = {'sampler': train_sampler}
     train_kwargs.update(cuda_kwargs)
     train_loader = DataLoader(train_dataset, **train_kwargs)
-
     logger(f'--> Train dataset metadata:\n{train_dataset.get_metadata()}')
 
     # create evaluation dataset on demand
     eval_loader = None
     if cfg.eval_interval > 0:
         eval_dataset = FineTuneDataset(data_sources=cfg.eval_datasources)
-
-        eval_kwargs = {'batch_size': cfg.micro_batch_size}
-        eval_kwargs.update(cuda_kwargs)
-
-        eval_loader = DataLoader(eval_dataset, **eval_kwargs)
-
+        eval_loader = DataLoader(eval_dataset, **cuda_kwargs)
         logger(f'--> Evaluation dataset metadata:\n{eval_dataset.get_metadata()}')
 
     # --------------- Setup model and optimizer ---------------
@@ -458,8 +452,9 @@ def fsdp_main():
     # Load model checkpoint before passing into FSDP
     if os.path.exists(cfg.pretrain_ckpt_file):
         logger(f'--> load pretrained checkpoint {cfg.pretrain_ckpt_file}')
-        ckpt_state = torch.load(cfg.pretrain_ckpt_file)
-        model.load_state_dict(ckpt_state)
+        model_state = torch.load(cfg.pretrain_ckpt_file)
+        model.load_state_dict(model_state)
+        del model_state
 
     scaler = None
     mixed_precision_policy = None  # defaults to fp32
@@ -489,11 +484,11 @@ def fsdp_main():
     else:
         logger('--> fallback to float32 ...')
 
-    gpt2_auto_wrap_policy = functools.partial(transformer_auto_wrap_policy, transformer_layer_cls={EncoderBlock})
+    _auto_wrap_policy = functools.partial(transformer_auto_wrap_policy, transformer_layer_cls={EncoderBlock})
 
     model = FSDP(
         model,
-        auto_wrap_policy=gpt2_auto_wrap_policy,
+        auto_wrap_policy=_auto_wrap_policy,
         mixed_precision=mixed_precision_policy,
         backward_prefetch=cfg.backward_prefetch,
         forward_prefetch=cfg.forward_prefetch,
@@ -652,7 +647,7 @@ if __name__ == '__main__':
     np.random.seed(cfg.seed)
     random.seed(cfg.seed)
 
-    # torch.set_float32_matmul_precision("high")
+    torch.set_float32_matmul_precision('high')
 
     # torch.backends.cuda.enable_flash_sdp(True)
     # torch.backends.cuda.enable_mem_efficient_sdp(True)
