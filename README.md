@@ -3,7 +3,7 @@
 Try to implement a minimum version of GPT model for research and education purpose. Although we focus on the GPT model, the procedure is suitable to training any auto regressive language models.
 
 **Note**:
-Our initial goal was trying to build a full pipeline including RLHF module following the InstructGPT paper, however we soon realized that the pre-trained GPT-2 model is inadequate for complex tasks like answering open-domain questions due to it's small model size. Instead, we will try to implement that pipeline in another project using LLaMA.
+Our initial goal was trying to build a full pipeline including RLHF module following the InstructGPT paper, however we soon realized that the pre-trained GPT-2 model is inadequate for complex tasks like answering open-domain questions due to it's small model size. You can checkout the our recent project based on LLaMA at [InstructLLaMA](https://github.com/michaelnny/InstructLLaMA)
 
 ## What we got
 
@@ -82,11 +82,6 @@ tensorboard --logdir=./logs/pretrain
 
 Once we have a pre-trained model and the datasets are ready, we can start doing fine-tuning. Note we can skip the pretraining step and using the pretrained model provided by openAI instead (by running the convert_hf_checkpoint.py script).
 
-We provide two options to do fine-tuning:
-
-1. Full scale fine-tuning: similar to pre-training where all parameters of the model are trainable, this is the common solution but requires the same amount GPU compute power as pre-training.
-2. LoRA fine-tuning: a parameter efficient fine-tuning method, where we frozen most of the parameters and only train a small amount of them using some tricks. This makes fine-tuning LLM on constrained GPU compute budget possible, for example we can fine-tuning the 1.3B GPT-2 model on a single RTX 3090 GPU, which is often impossible if we use full scale fine-tuning.
-
 ## Full fine-tuning
 
 Full scale fine-tuning without frozen any parameters. We can start the full scale fine-tuning by either using the weights saved from our pre-training script, or we can load the weights from OpenAI (created by using the convert_hf_checkpoint.py script).
@@ -114,7 +109,7 @@ python generate_pretrained.py
 python generate_finetuned.py
 ```
 
-The following are some examples from the fine-tuned model (based on OpenAI pretrained gpt2-xl) using LoRA fine-tuning (which you can recover the full checkpoint by running the `convert_lora_checkpoint.py` script). We can clearly see that the fine-tuned model can answer some (but not all) questions in a reasonably manner. Model size plays a pretty important role here, as we observed, for general question answering tasks, we should use at least the 774M parameters version `gpt2-large`.
+The following are some examples from the fine-tuned model (based on OpenAI pretrained gpt2-xl). We can clearly see that the fine-tuned model can answer some (but not all) questions in a reasonably manner. Model size plays a pretty important role here, as we observed, for general question answering tasks, we should use at least the 774M parameters version `gpt2-large`.
 
 ```
 ------------------------------------------------------------
@@ -269,7 +264,3 @@ This project is greatly influenced by the following projects:
 - [GPT-3] (https://github.com/openai/gpt-3)
 - [Learning to Summarize from Human Feedback] (https://github.com/openai/summarize-from-feedback)
 - [nanoGPT] (https://github.com/karpathy/nanoGPT)
-
-The following projects have been very helpful to us to implement the LoRA fine-tuning scripts:
-
-- [Lit-LLaMA] (https://github.com/Lightning-AI/lit-llama)
