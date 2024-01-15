@@ -1,7 +1,6 @@
 import os
-import itertools
 import functools
-from typing import Tuple
+from typing import Tuple, Dict
 import tqdm
 import random
 import numpy as np
@@ -46,6 +45,7 @@ from configs.finetune import config as cfg
 from utils import (
     CosineDecayWithWarmupLRScheduler,
     Memory_Maximizer,
+    StatsTracker,
     load_full_state_model_checkpoint,
     load_full_state_optimizer_checkpoint,
     save_full_state_model_checkpoint,
@@ -149,46 +149,93 @@ def compute_metrics(logits: torch.Tensor, targets: torch.Tensor, mask: torch.Ten
     return (num_accurate, num_samples)
 
 
-def run_single_train_step(
-    model,
-    rank,
-    world_size,
-    train_loader,
-    optimizer,
-    scheduler,
-    scaler=None,
-    return_stats=False,
-):
-    """A single training iteration consists of N micro batch * M gradient accumulation steps.
+def train_step(
+    model: GPT2LMHeadModel,
+    batch: Tuple[torch.Tensor],
+    scaler: ShardedGradScaler,
+    gradient_accum_steps: int,
+    local_rank: int,
+    tracker: StatsTracker,
+) -> None:
+    """Run a single training step, where we do a forward + backward passes, but do no update parameters"""
 
-    ```
-    optimizer.zero_grad()
-    for step in range(gradient_accum_steps):
-        data, target = next(train_loader)
-        output = model(data)
-        loss = compute_pre_train_loss(output, target)
-        loss.backward()
+    assert gradient_accum_steps >= 1
 
-    optimizer.step()
-    ```
+    x, y, attn_mask, loss_mask = batch
 
-    """
+    x, y, loss_mask = (
+        x.to(local_rank, non_blocking=True),
+        y.to(local_rank, non_blocking=True),
+        loss_mask.to(local_rank, non_blocking=True),
+    )
 
-    local_rank = int(os.environ['LOCAL_RANK'])
+    # use pre-computed attention mask to handle padded sequence,
+    # this is very slow (2-3x slower), also requires huge amount of GPU RAM...
+    if attn_mask is not None:
+        attn_mask = attn_mask.to(local_rank, non_blocking=True)
 
-    if return_stats:
-        metrics = torch.zeros(5).to(local_rank)
+    output = model(x, attn_mask)
+
+    loss = compute_finetune_loss(output, y, loss_mask)
+    # scale the loss to account for gradient accumulation
+    scaled_loss = loss / cfg.gradient_accum_steps
+
+    if scaler is not None:  # when using float16
+        scaler.scale(scaled_loss).backward()
+    else:
+        scaled_loss.backward()
+
+    num_acc, num_samples = compute_metrics(output.detach(), y.detach())
+    tracker.update(loss.detach(), num_acc, num_samples)
+
+
+def update_step(
+    model: GPT2LMHeadModel,
+    optimizer: torch.optim.AdamW,
+    scheduler: CosineDecayWithWarmupLRScheduler,
+    grad_clip: float,
+    scaler: ShardedGradScaler = None,
+) -> None:
+    """Run a single parameter update step"""
+    if grad_clip > 0.0:
+        if scaler is not None:  # when using float16
+            scaler.unscale_(optimizer)  # unscale before clip gradients
+
+        # FSDP needs to use this method to clip gradient norm instead of torch.nn.utils.clip_grad_norm_
+        model.clip_grad_norm_(grad_clip)
+
+    if scaler is not None:  # when using float16
+        scaler.step(optimizer)
+        scaler.update()  # adjust scaling for next batch
+    else:
+        optimizer.step()
 
     # prepare for next update
     optimizer.zero_grad(set_to_none=True)
+    scheduler.step()  # call lr scheduler on a step-by-step basis instead of epoch
 
-    for x, y, attn_mask, loss_mask in itertools.islice(train_loader, cfg.gradient_accum_steps):
+
+@torch.no_grad()
+def run_evaluation_steps(
+    model: GPT2LMHeadModel,
+    loader: DataLoader,
+    steps: int,
+    local_rank: int,
+    tracker: StatsTracker,
+) -> None:
+    """Run M evaluation steps"""
+    model.eval()  # set model in evaluation mode
+
+    inner_pbar = None
+    if local_rank == 0:
+        inner_pbar = tqdm.tqdm(range(cfg.eval_iters), colour='green', desc='Evaluation steps')
+
+    for i, (x, y, attn_mask, loss_mask) in enumerate(loader):
         x, y, loss_mask = (
             x.to(local_rank, non_blocking=True),
             y.to(local_rank, non_blocking=True),
             loss_mask.to(local_rank, non_blocking=True),
         )
-
         # use pre-computed attention mask to handle padded sequence,
         # this is very slow (2-3x slower), also requires huge amount of GPU RAM...
         if attn_mask is not None:
@@ -197,102 +244,21 @@ def run_single_train_step(
         output = model(x, attn_mask)
 
         loss = compute_finetune_loss(output, y, loss_mask)
-        # scale the loss to account for gradient accumulation
-        scaled_loss = loss / cfg.gradient_accum_steps
 
-        if scaler is not None:  # when using float16
-            scaler.scale(scaled_loss).backward()
-        else:
-            scaled_loss.backward()
+        num_acc, num_samples = compute_metrics(output.detach(), y.detach())
+        tracker.update(loss.detach(), num_acc, num_samples)
 
-        if return_stats:
-            num_acc, num_samples = compute_metrics(output, y, loss_mask)
-            metrics[0] += loss.item()  # sum up batch loss
-            metrics[1] += np.exp(loss.item())  # sum up perplexity
-            metrics[2] += 1  # increase number of batches
-            metrics[3] += num_acc  # sum up number of accurate prediction tokens
-            metrics[4] += num_samples  # sum up number of tokens
+        if inner_pbar is not None:
+            inner_pbar.update(1)
 
-    if scaler is not None:  # when using float16
-        if cfg.grad_clip != 0.0:
-            scaler.unscale_(optimizer)  # unscale before clip gradients
-            # FSDP needs to use this method to clip gradient norm instead of torch.nn.utils.clip_grad_norm_
-            model.clip_grad_norm_(cfg.grad_clip)
-        scaler.step(optimizer)
-        scaler.update()  # adjust scaling for next batch
-    else:
-        if cfg.grad_clip != 0.0:
-            model.clip_grad_norm_(cfg.grad_clip)
-        optimizer.step()
+        if i >= steps:
+            break
 
-    scheduler.step()  # call lr scheduler on a step-by-step basis instead of epoch
-
-    if return_stats:
-        dist.all_reduce(metrics, op=dist.ReduceOp.SUM)
-        train_loss = metrics[0] / metrics[2]
-        train_perplexity = metrics[1] / metrics[2]
-        train_accuracy = 100 * metrics[3] / metrics[4]
-
-        lr = optimizer.param_groups[0]['lr']
-        return {
-            'loss': train_loss.item(),
-            'accuracy': train_accuracy.item(),
-            'perplexity': train_perplexity.item(),
-            'learning_rate': lr,
-        }
-    else:
-        return None
-
-
-def run_evaluation_steps(model, rank, world_size, eval_loader):
-    """Run M evaluation iterations"""
-    model.eval()  # set model in evaluation mode
-
-    local_rank = int(os.environ['LOCAL_RANK'])
-
-    metrics = torch.zeros(5).to(local_rank)
-
-    inner_pbar = None
-    if rank == 0:
-        inner_pbar = tqdm.tqdm(range(cfg.eval_iters), colour='green', desc='Evaluation iterations')
-
-    with torch.no_grad():
-        for x, y, attn_mask, loss_mask in itertools.islice(eval_loader, cfg.eval_iters):
-            x, y, loss_mask = (
-                x.to(local_rank, non_blocking=True),
-                y.to(local_rank, non_blocking=True),
-                loss_mask.to(local_rank, non_blocking=True),
-            )
-            # use pre-computed attention mask to handle padded sequence,
-            # this is very slow (2-3x slower), also requires huge amount of GPU RAM...
-            if attn_mask is not None:
-                attn_mask = attn_mask.to(local_rank, non_blocking=True)
-
-            output = model(x, attn_mask)
-
-            loss = compute_finetune_loss(output, y, loss_mask)
-
-            num_acc, num_samples = compute_metrics(output, y, loss_mask)
-            metrics[0] += loss.item()  # sum up batch loss
-            metrics[1] += np.exp(loss.item())  # sum up perplexity
-            metrics[2] += 1  # increase number of batches
-            metrics[3] += num_acc  # sum up number of accurate prediction tokens
-            metrics[4] += num_samples  # sum up number of tokens
-
-            if inner_pbar is not None:
-                inner_pbar.update(1)
-
-    dist.all_reduce(metrics, op=dist.ReduceOp.SUM)
-    eval_loss = metrics[0] / metrics[2]
-    eval_perplexity = metrics[1] / metrics[2]
-    eval_accuracy = 100 * metrics[3] / metrics[4]
+        if inner_pbar is not None:
+            inner_pbar.update(1)
 
     if inner_pbar is not None:
         inner_pbar.close()
-
-    model.train()  # set model in training mode after evaluation runs
-
-    return {'loss': eval_loss.item(), 'accuracy': eval_accuracy.item(), 'perplexity': eval_perplexity.item()}
 
 
 def rank0_logger(msg, rank):
@@ -389,7 +355,7 @@ def _collate_fn(batch):
 
 
 def fsdp_main():
-    assert cfg.micro_batch_size >= 1
+    assert cfg.train_batch_size >= 1
     assert cfg.gradient_accum_steps >= 1
     assert cfg.log_interval >= 10
 
@@ -415,9 +381,9 @@ def fsdp_main():
     cuda_kwargs = {
         'collate_fn': _collate_fn,
         'num_workers': cfg.dataloader_workers,
-        'batch_size': cfg.micro_batch_size,
-        'pin_memory': True,
-        'shuffle': False,
+        'batch_size': cfg.train_batch_size,
+        'pin_memory': False,
+        'shuffle': True,
     }
 
     train_kwargs = {'sampler': train_sampler}
@@ -431,6 +397,10 @@ def fsdp_main():
         eval_dataset = FineTuneDataset(data_sources=cfg.eval_datasources)
         eval_loader = DataLoader(eval_dataset, **cuda_kwargs)
         logger(f'--> Evaluation dataset metadata:\n{eval_dataset.get_metadata()}')
+
+    batch_size = int(cfg.train_batch_size * cfg.gradient_accum_steps)
+    steps_per_epoch = len(train_loader) // cfg.gradient_accum_steps
+    max_train_steps = steps_per_epoch * cfg.num_epochs
 
     # --------------- Setup model and optimizer ---------------
 
@@ -525,7 +495,7 @@ def fsdp_main():
         min_lr=cfg.min_lr,
         max_lr=cfg.max_lr,
         warmup_steps=cfg.warmup_steps,
-        max_decay_steps=cfg.max_decay_steps,
+        max_decay_steps=max_train_steps,
     )
 
     # --------------- Start Training ---------------
@@ -541,7 +511,9 @@ def fsdp_main():
     memmax = None
     mem_alloc_tracker = None
     inner_pbar = None
-    train_stats = eval_stats = None
+    train_stats = None
+    eval_stats = None
+    train_steps = 0
 
     if rank == 0:
         os.makedirs(cfg.log_dir, exist_ok=True)
@@ -557,78 +529,67 @@ def fsdp_main():
 
         inner_pbar = tqdm.tqdm(range(cfg.max_train_iters), colour='blue', desc='Training iterations')
 
-    model.train()
-    for iter in range(1, cfg.max_train_iters + 1):
-        train_stats = run_single_train_step(
-            model=model,
-            rank=rank,
-            world_size=world_size,
-            train_loader=train_loader,
-            optimizer=optimizer,
-            scheduler=scheduler,
-            scaler=scaler,
-            return_stats=iter % cfg.log_interval == 0 or iter == cfg.max_train_iters,
-        )
+    train_tracker = StatsTracker(True, local_rank)
+    val_tracker = StatsTracker(True, local_rank)
 
-        if inner_pbar is not None:
-            inner_pbar.update(1)
+    for epoch in range(1, cfg.num_epochs + 1):  # for each epoch
+        logger.info(f'Start epoch {epoch}')
+        model.train()
+        train_tracker.reset()
+        val_tracker.reset()
 
-        if torch_profiler is not None:
-            torch_profiler.step()
+        for iter, batch in enumerate(train_loader):  # for each batch in current epoch
+            train_step(model, batch, scaler, cfg.gradient_accum_steps, local_rank, train_tracker)
 
-        # logging
-        if train_stats is not None and rank == 0:
-            logger(
-                f'Training iteration {iter}: train loss: {train_stats["loss"]:.4f}, '
-                f'train accuracy: {train_stats["accuracy"]:.2f}%, train perplexity: {train_stats["perplexity"]:.2f}, learning rate: {train_stats["learning_rate"]:.10f}'
-            )
+            if iter % cfg.gradient_accum_steps == 0:
+                update_step(model, optimizer, scheduler, cfg.grad_clip, scaler)
+                inner_pbar.update(1)
+                train_steps += 1
 
-            if tb_writer is not None:
-                tb_writer.add_scalar('train/loss', train_stats['loss'], iter)
-                tb_writer.add_scalar('train/accuracy', train_stats['accuracy'], iter)
-                tb_writer.add_scalar('train/perplexity', train_stats['perplexity'], iter)
-                tb_writer.add_scalar('train/learning_rate', train_stats['learning_rate'], iter)
+                if torch_profiler is not None:
+                    torch_profiler.step()
 
-            if cfg.track_gpu_mem_usage:
-                memmax.update()
-                mem_alloc_tracker.append(format_to_gb(torch.cuda.memory_allocated()))
+                # logging training statistics
+                if train_steps % cfg.log_interval == 0:
+                    train_stats = train_tracker.get_dict()
+                    train_stats['learning_rate'] = optimizer.param_groups[0]['lr']
+                    log_statistics(logger, tb_writer, train_steps, train_stats, True)
+                    train_tracker.reset()
 
-        # checkpointing
-        if cfg.ckpt_interval > 0 and iter % cfg.ckpt_interval == 0 or iter == cfg.max_train_iters:
-            # save model state
-            if cfg.checkpoint_type == StateDictType.FULL_STATE_DICT:
-                save_full_state_model_checkpoint(
-                    model, rank, os.path.join(cfg.ckpt_dir, f'model_{model.model_name}-iter-{iter}.pt')
-                )
-            elif cfg.checkpoint_type == StateDictType.SHARDED_STATE_DICT:
-                pass
+                    if cfg.track_gpu_mem_usage:
+                        memmax.update()
+                        mem_alloc_tracker.append(format_to_gb(torch.cuda.memory_allocated()))
 
-            # save optimizer state separately to save resource incase model is too big
-            if cfg.save_optimizer:
-                if cfg.checkpoint_type == StateDictType.FULL_STATE_DICT:
-                    save_full_state_optimizer_checkpoint(
-                        model,
-                        optimizer,
-                        rank,
-                        os.path.join(cfg.ckpt_dir, f'optim_{model.model_name}-iter-{iter}.pt'),
-                    )
-                elif cfg.checkpoint_type == StateDictType.SHARDED_STATE_DICT:
-                    pass
+                # checkpointing
+                if cfg.ckpt_interval > 0 and iter % cfg.ckpt_interval == 0 or iter == max_train_steps:
+                    # save model state
+                    if cfg.checkpoint_type == StateDictType.FULL_STATE_DICT:
+                        save_full_state_model_checkpoint(
+                            model, rank, os.path.join(cfg.ckpt_dir, f'model_{model.model_name}-iter-{iter}.pt')
+                        )
+                    elif cfg.checkpoint_type == StateDictType.SHARDED_STATE_DICT:
+                        pass
 
-        # evaluation steps
-        if cfg.eval_iters > 0 and (cfg.eval_interval > 0 and iter % cfg.eval_interval == 0 or iter == cfg.max_train_iters):
-            eval_stats = run_evaluation_steps(model=model, rank=rank, world_size=world_size, eval_loader=eval_loader)
+                # save optimizer state separately to save resource incase model is too big
+                if cfg.save_optimizer:
+                    if cfg.checkpoint_type == StateDictType.FULL_STATE_DICT:
+                        save_full_state_optimizer_checkpoint(
+                            model,
+                            optimizer,
+                            rank,
+                            os.path.join(cfg.ckpt_dir, f'optim_{model.model_name}-iter-{iter}.pt'),
+                        )
+                    elif cfg.checkpoint_type == StateDictType.SHARDED_STATE_DICT:
+                        pass
 
-            if rank == 0:
-                logger(
-                    f'Training iteration {iter}: evaluation loss: {eval_stats["loss"]:.4f}, '
-                    f'evaluation accuracy: {eval_stats["accuracy"]:.2f}%, evaluation perplexity: {eval_stats["perplexity"]:.2f}'
-                )
-
-                if tb_writer is not None:
-                    tb_writer.add_scalar('eval/loss', eval_stats['loss'], iter)
-                    tb_writer.add_scalar('eval/accuracy', eval_stats['accuracy'], iter)
-                    tb_writer.add_scalar('eval/perplexity', eval_stats['perplexity'], iter)
+                # evaluation steps
+                if cfg.eval_iters > 0 and (cfg.eval_interval > 0 and iter % cfg.eval_interval == 0 or iter == max_train_steps):
+                    val_tracker.reset()
+                    model.eval()
+                    run_evaluation_steps(model, eval_loader, cfg.eval_iters, local_rank, val_tracker)
+                    model.train()
+                    eval_stats = val_tracker.get_dict()
+                    log_statistics(logger, tb_writer, train_steps, eval_stats, False)
 
     if rank == 0:
         # training is done...show some training stats.
@@ -640,6 +601,16 @@ def fsdp_main():
     # all done, set barrier to ensure all GPU's complete, and then cleanup
     dist.barrier()
     cleanup()
+
+
+def log_statistics(logger, tb_writer: SummaryWriter, train_steps: int, stats: Dict, is_training: bool) -> None:
+    logger(f'Training steps {train_steps}, is status for validation: {not is_training}')
+    logger(stats)
+
+    if tb_writer is not None:
+        tb_tag = 'train' if is_training else 'val'
+        for k, v in stats.items():
+            tb_writer.add_scalar(f'{tb_tag}/{k}', v, train_steps)
 
 
 if __name__ == '__main__':

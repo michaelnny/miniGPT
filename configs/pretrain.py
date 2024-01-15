@@ -59,22 +59,21 @@ class config:
     max_seq_length: int = 1024  # sequence length for model input
 
     # training and evaluation loops
-    max_train_iters: int = 300000
-    micro_batch_size: int = 6
-    # accumulate gradients so for each iteration, the actual batch size is = micro_batch_size x gradient_accum_steps
-    gradient_accum_steps: int = 40
+    num_epochs: int = 10
+    train_batch_size: int = 6
+    # accumulate gradients so for each iteration, the actual batch size is = train_batch_size x gradient_accum_steps
+    gradient_accum_steps: int = 20
     eval_interval: int = 2000  # run M evaluation iterations after every N training iterations
     eval_iters: int = 100
     log_interval: int = 100  # log training metrics (loss, accuracy) every N training iterations
     ckpt_interval: int = 5000  # save model and optionally optimizer checkpoints every N training iterations
-    save_optimizer: bool = True  # only valid if ckpt_interval > 0
+    save_optimizer: bool = True
 
     # learning rate scheduler
-    init_lr: float = 1e-8  # initial learning rate
+    init_lr: float = 4e-6  # initial learning rate
     max_lr: float = 4e-4  # max learning rate when warm up
-    min_lr: float = 2e-5  # min learning rate after decay
+    min_lr: float = 4e-5  # min learning rate after decay
     warmup_steps: int = 2000
-    max_decay_steps: int = 300000
 
     # AdamW optimizer
     weight_decay: float = 0.01

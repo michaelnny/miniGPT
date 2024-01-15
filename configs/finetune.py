@@ -35,12 +35,12 @@ class config:
     pad_id: int = 50256  # here we use eot_token id, since GPT-2 model don't have a pad token
 
     # training and evaluation loops
-    max_train_iters: int = 10000  # training samples * epochs / batch size, 500000 training samples, with batch size of 120, 4000 iters = one epoch
-    micro_batch_size: int = 12
-    # accumulate gradients so for each iteration, the actual batch size is = micro_batch_size x gradient_accum_steps
+    num_epochs: int = 5
+    train_batch_size: int = 12
+    # accumulate gradients so for each iteration, the actual batch size is = train_batch_size x gradient_accum_steps
     gradient_accum_steps: int = 10
     eval_interval: int = 1000  # run M evaluation iterations after every N training iterations
-    eval_iters: int = 100  # large size since micro_batch_size is very small
+    eval_iters: int = 100  # large size since train_batch_size is very small
     log_interval: int = 100  # log training metrics (loss, accuracy) every N training iterations
     ckpt_interval: int = 1000  # save model and optionally optimizer checkpoints every N training iterations
     save_optimizer: bool = False  # only valid if ckpt_interval > 0
