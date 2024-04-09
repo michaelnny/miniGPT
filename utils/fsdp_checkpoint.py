@@ -27,45 +27,9 @@ import sys
 wd = Path(__file__).parent.parent.resolve()
 sys.path.append(str(wd))
 
-from models import lora_state_dict
-
 
 full_state_model_config = FullStateDictConfig(offload_to_cpu=False, rank0_only=True)
 full_state_optim_config = FullOptimStateDictConfig(offload_to_cpu=False, rank0_only=True)
-
-
-def save_lora_model_checkpoint(model, rank, ckpt_save_path, bias: str = 'none', overwrite=False, verbose=True):
-    """Save lora weights to checkpoint"""
-    save_full_path = Path(ckpt_save_path)
-    if rank == 0:
-        if not overwrite and save_full_path.exists():
-            print(f'a file with the same name already exists at {save_full_path}, aborting...')
-            return
-        else:
-            save_dir = save_full_path.parent
-            save_dir.mkdir(parents=True, exist_ok=True)
-
-    with FSDP.state_dict_type(
-        model,
-        state_dict_type=StateDictType.FULL_STATE_DICT,
-        state_dict_config=full_state_model_config,
-        optim_state_dict_config=full_state_optim_config,
-    ):
-        model_state = model.state_dict()
-
-    if verbose:
-        print(f'model state_dict ready on rank {rank}\n')
-
-    if rank == 0:
-        if verbose:
-            print('--> saving lora model ...')
-
-        lora_state = lora_state_dict(model_state, bias)
-
-        torch.save(lora_state, save_full_path)
-
-        if verbose:
-            print(f'--> model checkpoint saved at {save_full_path}\n')
 
 
 def save_full_state_model_checkpoint(model, rank, ckpt_save_path, overwrite=False, verbose=True):
