@@ -51,6 +51,7 @@ from utils import (
     save_full_state_model_checkpoint,
     save_full_state_optimizer_checkpoint,
     format_to_gb,
+    create_logger,
 )
 
 
@@ -185,7 +186,7 @@ def train_step(
     else:
         scaled_loss.backward()
 
-    num_acc, num_samples = compute_metrics(output.detach(), y.detach())
+    num_acc, num_samples = compute_metrics(output.detach(), y.detach(), loss_mask)
     tracker.update(loss.detach(), num_acc, num_samples)
 
 
@@ -245,17 +246,14 @@ def run_evaluation_steps(
 
         loss = compute_finetune_loss(output, y, loss_mask)
 
-        num_acc, num_samples = compute_metrics(output.detach(), y.detach())
+        num_acc, num_samples = compute_metrics(output.detach(), y.detach(), loss_mask)
         tracker.update(loss.detach(), num_acc, num_samples)
 
         if inner_pbar is not None:
             inner_pbar.update(1)
 
-        if i >= steps:
+        if i + 1 >= steps:
             break
-
-        if inner_pbar is not None:
-            inner_pbar.update(1)
 
     if inner_pbar is not None:
         inner_pbar.close()
@@ -368,11 +366,11 @@ def fsdp_main():
 
     setup()
 
-    logger = functools.partial(rank0_logger, rank=rank)
+    logger = create_logger(rank=rank)
 
     # --------------- Load datasets ---------------
 
-    logger('\nLoading datasets ...')
+    logger.info('Loading datasets ...')
 
     train_dataset = FineTuneDataset(data_sources=cfg.train_datasources)
 
@@ -389,14 +387,14 @@ def fsdp_main():
     train_kwargs = {'sampler': train_sampler}
     train_kwargs.update(cuda_kwargs)
     train_loader = DataLoader(train_dataset, **train_kwargs)
-    logger(f'--> Train dataset metadata:\n{train_dataset.get_metadata()}')
+    logger.info(f'--> Train dataset metadata:\n{train_dataset.get_metadata()}')
 
     # create evaluation dataset on demand
     eval_loader = None
     if cfg.eval_interval > 0:
         eval_dataset = FineTuneDataset(data_sources=cfg.eval_datasources)
         eval_loader = DataLoader(eval_dataset, **cuda_kwargs)
-        logger(f'--> Evaluation dataset metadata:\n{eval_dataset.get_metadata()}')
+        logger.info(f'--> Evaluation dataset metadata:\n{eval_dataset.get_metadata()}')
 
     batch_size = int(cfg.train_batch_size * cfg.gradient_accum_steps)
     steps_per_epoch = len(train_loader) // cfg.gradient_accum_steps
@@ -404,7 +402,7 @@ def fsdp_main():
 
     # --------------- Setup model and optimizer ---------------
 
-    logger('\nInitialize model and FSDP ...')
+    logger.info('Initialize model and FSDP ...')
 
     torch.cuda.set_device(local_rank)
     clear_gpu_cache(local_rank)
@@ -416,12 +414,12 @@ def fsdp_main():
         resid_dropout=cfg.resid_dropout,
     )
 
-    logger(f'--> model metadata:\n{model.get_metadata()}')
-    logger(f'--> number of parameters: {model.get_num_params() / 1e6:.2f} million')
+    logger.info(f'--> model metadata:\n{model.get_metadata()}')
+    logger.info(f'--> number of parameters: {model.get_num_params() / 1e6:.2f} million')
 
     # Load model checkpoint before passing into FSDP
     if os.path.exists(cfg.pretrain_ckpt_file):
-        logger(f'--> load pretrained checkpoint {cfg.pretrain_ckpt_file}')
+        logger.info(f'--> load pretrained checkpoint {cfg.pretrain_ckpt_file}')
         model_state = torch.load(cfg.pretrain_ckpt_file)
         model.load_state_dict(model_state)
         del model_state
@@ -432,7 +430,7 @@ def fsdp_main():
     if cfg.mixed_precision:
         bf16_ready = torch.version.cuda and torch.cuda.is_bf16_supported() and dist.is_nccl_available()
         if bf16_ready:
-            logger('--> bFloat16 enabled for mixed precision ...')
+            logger.info('--> bFloat16 enabled for mixed precision ...')
             mixed_precision_policy = MixedPrecision(
                 param_dtype=torch.bfloat16,
                 # Gradient communication precision.
@@ -441,7 +439,7 @@ def fsdp_main():
                 buffer_dtype=torch.bfloat16,
             )
         else:
-            logger('--> float16 enabled for mixed precision ...')
+            logger.info('--> float16 enabled for mixed precision ...')
             # requires grad scaler
             scaler = ShardedGradScaler()
             mixed_precision_policy = MixedPrecision(
@@ -452,7 +450,7 @@ def fsdp_main():
                 buffer_dtype=torch.float16,
             )
     else:
-        logger('--> fallback to float32 ...')
+        logger.info('--> fallback to float32 ...')
 
     _auto_wrap_policy = functools.partial(transformer_auto_wrap_policy, transformer_layer_cls={EncoderBlock})
 
@@ -470,16 +468,16 @@ def fsdp_main():
     )
 
     if cfg.fsdp_activation_checkpointing:
-        logger('--> applying FSDP activation checkpointing ...')
+        logger.info('--> applying FSDP activation checkpointing ...')
         apply_fsdp_checkpointing(model)
 
-    logger(f'--> FSDP model:\n{model}')
+    logger.info(f'--> FSDP model:\n{model}')
 
     if cfg.compile_model:
-        logger('--> compile model using torch.compile() ...')
+        logger.info('--> compile model using torch.compile() ...')
         model = torch.compile(model)
 
-    logger('\nInitialize optimizer ...')
+    logger.info('Initialize optimizer ...')
 
     optimizer = create_optimizer(
         model=model,
@@ -500,7 +498,7 @@ def fsdp_main():
 
     # --------------- Start Training ---------------
 
-    logger(f'\nStarting to run {cfg.max_train_iters} training iterations ...')
+    logger.info(f'Starting to run {cfg.num_epochs} training epochs ...')
 
     torch_profiler = None
     # Careful as the logs will grow very fast
@@ -527,7 +525,7 @@ def fsdp_main():
             mem_alloc_tracker = []
             memmax.start()
 
-        inner_pbar = tqdm.tqdm(range(cfg.max_train_iters), colour='blue', desc='Training iterations')
+        inner_pbar = tqdm.tqdm(range(max_train_steps), colour='blue', desc='Training steps')
 
     train_tracker = StatsTracker(True, local_rank)
     val_tracker = StatsTracker(True, local_rank)
@@ -553,7 +551,7 @@ def fsdp_main():
                 if train_steps % cfg.log_interval == 0:
                     train_stats = train_tracker.get_dict()
                     train_stats['learning_rate'] = optimizer.param_groups[0]['lr']
-                    log_statistics(logger, tb_writer, train_steps, train_stats, True)
+                    log_statistics(tb_writer, train_steps, train_stats, True)
                     train_tracker.reset()
 
                     if cfg.track_gpu_mem_usage:
@@ -589,24 +587,21 @@ def fsdp_main():
                     run_evaluation_steps(model, eval_loader, cfg.eval_iters, local_rank, val_tracker)
                     model.train()
                     eval_stats = val_tracker.get_dict()
-                    log_statistics(logger, tb_writer, train_steps, eval_stats, False)
+                    log_statistics(tb_writer, train_steps, eval_stats, False)
 
     if rank == 0:
         # training is done...show some training stats.
         if cfg.track_gpu_mem_usage:
             memmax.stop()
-            logger(f'Total memory allocated: {mem_alloc_tracker}')
-            logger(f'CUDA Memory Summary After Last training:\n{torch.cuda.memory_summary()}')
+            logger.info(f'Total memory allocated: {mem_alloc_tracker}')
+            logger.info(f'CUDA Memory Summary After Last training:\n{torch.cuda.memory_summary()}')
 
     # all done, set barrier to ensure all GPU's complete, and then cleanup
     dist.barrier()
     cleanup()
 
 
-def log_statistics(logger, tb_writer: SummaryWriter, train_steps: int, stats: Dict, is_training: bool) -> None:
-    logger(f'Training steps {train_steps}, is status for validation: {not is_training}')
-    logger(stats)
-
+def log_statistics(tb_writer: SummaryWriter, train_steps: int, stats: Dict, is_training: bool) -> None:
     if tb_writer is not None:
         tb_tag = 'train' if is_training else 'val'
         for k, v in stats.items():

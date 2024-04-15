@@ -82,8 +82,8 @@ class config:
 
     # others
     seed: int = 127
-    log_dir: str = './logs_test/finetune'  # save logs and traces
-    ckpt_dir: str = './checkpoints_test/finetune'
+    log_dir: str = './logs/finetune'  # save logs and traces
+    ckpt_dir: str = './checkpoints/finetune'
     use_tensorboard: bool = True
     use_profiler: bool = False  # use torch profiler to monitoring traces
     track_gpu_mem_usage: bool = False  # track GPU memory allocation statistics

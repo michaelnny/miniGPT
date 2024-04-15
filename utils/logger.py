@@ -4,22 +4,34 @@ import os
 import csv
 
 
-def create_logger(level='INFO'):
-    handler = logging.StreamHandler(stream=sys.stderr)
-    formatter = logging.Formatter(
-        fmt='%(levelname)s %(asctime)s %(filename)s:%(lineno)d] %(message)s', datefmt='%Y-%m-%d %H:%M:%S'
-    )
-    handler.setFormatter(formatter)
-    logger = logging.getLogger()
-    veb = logging.INFO
-    level = str(level).upper()
-    if level == 'DEBUG':
-        veb = logging.DEBUG
-    logger.setLevel(veb)
-    logger.addHandler(handler)
+class DummyLogger:
+    def __init__(self):
+        pass
 
-    return logger
+    def _noop(self, *args, **kwargs):
+        pass
 
+    info = warning = debug = _noop
+
+
+def create_logger(level='INFO', rank=0):
+    if rank == 0:
+        handler = logging.StreamHandler(stream=sys.stderr)
+        formatter = logging.Formatter(
+            fmt='%(levelname)s %(asctime)s %(filename)s:%(lineno)d] %(message)s', datefmt='%Y-%m-%d %H:%M:%S'
+        )
+        handler.setFormatter(formatter)
+        logger = logging.getLogger()
+        veb = logging.INFO
+        level = str(level).upper()
+        if level == 'DEBUG':
+            veb = logging.DEBUG
+        logger.setLevel(veb)
+        logger.addHandler(handler)
+
+        return logger
+    else:
+        return DummyLogger()
 
 
 class CsvWriter:
